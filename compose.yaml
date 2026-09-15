@@ -1,0 +1,44 @@
+services:
+  api:
+    build:
+      context: ./backend
+    environment:
+      RELAYMAID_ENVIRONMENT: ${RELAYMAID_ENVIRONMENT:-local}
+      RELAYMAID_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-relaymaid}:${POSTGRES_PASSWORD:-relaymaid}@postgres:5432/${POSTGRES_DB:-relaymaid}
+      RELAYMAID_REDIS_URL: redis://redis:6379/${REDIS_DB:-0}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-relaymaid}
+      POSTGRES_USER: ${POSTGRES_USER:-relaymaid}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-relaymaid}
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-relaymaid} -d ${POSTGRES_DB:-relaymaid}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:8-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  postgres_data:
