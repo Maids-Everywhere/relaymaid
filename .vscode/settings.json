@@ -1,0 +1,13 @@
+{
+  "python.defaultInterpreterPath": "/workspaces/relaymaid/backend/.venv/bin/python",
+  "python.analysis.extraPaths": [
+    "./backend/src"
+  ],
+  "python-envs.pythonProjects": [
+    {
+      "path": "./backend",
+      "envManager": "ms-python.python:uv",
+      "packageManager": "ms-python.python:uv"
+    }
+  ]
+}

@@ -32,8 +32,19 @@ This starts the API, PostgreSQL, and Redis. PostgreSQL and Redis are present for
 the next persistence milestone; the initial health endpoint deliberately checks
 only whether the API process is alive.
 
+## Dev Container
+
+Open the repository in a Dev Containers-compatible editor and select **Reopen in
+Container**. The environment installs the backend dependencies, starts
+PostgreSQL and Redis. Start the reloading API when needed:
+
+```bash
+make run
+```
+
+The API is available at `http://localhost:8000`.
+
 ## Architecture
 
 See `docs/` for MVP boundaries, system architecture, event lifecycle, threat
 model, and architecture decision records.
-

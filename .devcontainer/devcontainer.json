@@ -1,0 +1,23 @@
+{
+  "name": "RelayMaid",
+  "dockerComposeFile": "compose.yaml",
+  "service": "devcontainer",
+  "workspaceFolder": "/workspaces/relaymaid",
+  "runServices": ["postgres", "redis"],
+  "shutdownAction": "stopCompose",
+  "forwardPorts": [8000, 5432, 6379],
+  "portsAttributes": {
+    "8000": {
+      "label": "RelayMaid API",
+      "onAutoForward": "openBrowserOnce"
+    },
+    "5432": {
+      "label": "PostgreSQL"
+    },
+    "6379": {
+      "label": "Redis"
+    }
+  },
+  "postCreateCommand": "cd backend && uv sync --frozen",
+  "remoteUser": "vscode"
+}
