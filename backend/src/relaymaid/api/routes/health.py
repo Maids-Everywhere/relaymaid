@@ -26,16 +26,17 @@ async def health() -> LiveResponse:
     """Report process health without checking external dependencies."""
     return LiveResponse(status="ok", service="relaymaid")
 
+
 @router.get("/ready", response_model=ReadinessResponse)
 async def health_ready(engine: DatabaseEngine) -> ReadinessResponse:
     """Report process readiness without checking external dependencies."""
     try:
         async with engine.connect() as conn:
-                await conn.execute(text("SELECT 1"))
+            await conn.execute(text("SELECT 1"))
     except SQLAlchemyError as error:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Database connection failed"
+            detail="Database connection failed",
         ) from error
 
     return ReadinessResponse(status="ready")
