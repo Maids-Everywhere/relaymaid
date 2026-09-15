@@ -13,6 +13,23 @@ on:
 jobs:
   quality:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: relaymaid
+          POSTGRES_USER: relaymaid
+          POSTGRES_PASSWORD: relaymaid
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U relaymaid -d relaymaid"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      RELAYMAID_DATABASE_URL: postgresql+psycopg://relaymaid:relaymaid@localhost:5432/relaymaid
+      RELAYMAID_REDIS_URL: redis://localhost:6379/0
     defaults:
       run:
         working-directory: backend
@@ -26,4 +43,3 @@ jobs:
       - run: uv run ruff format --check .
       - run: uv run mypy
       - run: uv run pytest
-
