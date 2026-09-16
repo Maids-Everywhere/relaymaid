@@ -1,36 +1,17 @@
+# Extends ../compose.yaml; paths are relative to the repository root.
 services:
   devcontainer:
     build:
-      context: .
+      context: ./.devcontainer
     command: sleep infinity
     environment:
-      RELAYMAID_ENVIRONMENT: local
-      RELAYMAID_DATABASE_URL: postgresql+psycopg://relaymaid:relaymaid@postgres:5432/relaymaid
-      RELAYMAID_REDIS_URL: redis://redis:6379/0
+      RELAYMAID_ENVIRONMENT: ${RELAYMAID_ENVIRONMENT:-local}
+      RELAYMAID_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-relaymaid}:${POSTGRES_PASSWORD:-relaymaid}@postgres:5432/${POSTGRES_DB:-relaymaid}
+      RELAYMAID_REDIS_URL: redis://redis:6379/${REDIS_DB:-0}
     volumes:
-      - ..:/workspaces/relaymaid:cached
-
-  postgres:
-    image: postgres:17-alpine
-    environment:
-      POSTGRES_DB: relaymaid
-      POSTGRES_USER: relaymaid
-      POSTGRES_PASSWORD: relaymaid
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U relaymaid -d relaymaid"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-    volumes:
-      - devcontainer_postgres_data:/var/lib/postgresql/data
-
-  redis:
-    image: redis:8-alpine
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-
-volumes:
-  devcontainer_postgres_data:
+      - .:/workspaces/relaymaid:cached
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
