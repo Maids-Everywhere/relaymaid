@@ -31,6 +31,9 @@ packages = ["src/relaymaid"]
 [tool.pytest.ini_options]
 addopts = "--strict-config --strict-markers"
 testpaths = ["tests"]
+markers = [
+    "integration: tests requiring PostgreSQL",
+]
 
 [tool.ruff]
 line-length = 88
