@@ -1,4 +1,8 @@
+from uuid import UUID
+
 from pydantic import BaseModel, EmailStr, Field, SecretStr, field_validator
+
+from relaymaid.domain import UserRole
 
 
 class RegisterRequest(BaseModel):
@@ -15,3 +19,11 @@ class RegisterRequest(BaseModel):
     def normalize_email(cls, value: str) -> str:
         """Normalize the email address."""
         return str(value).lower().strip()
+
+
+class RegisterResponse(BaseModel):
+    user_id: UUID
+    organization_id: UUID
+    membership_id: UUID
+    email: EmailStr
+    role: UserRole

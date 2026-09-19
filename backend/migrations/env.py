@@ -15,7 +15,8 @@ from relaymaid.db.base import Base
 config = context.config
 settings = get_settings()
 
-config.set_main_option("sqlalchemy.url", settings.database_url.replace("%", "%%"))
+database_url = config.attributes.get("database_url", settings.database_url)
+config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.

@@ -29,7 +29,7 @@ class Membership(Base):
     organization_id: Mapped[UUID] = mapped_column(
         ForeignKey("organizations.id"), nullable=False
     )
-    role: Mapped[str] = mapped_column(
+    role: Mapped[UserRole] = mapped_column(
         Enum(
             UserRole,
             name="membership_role",

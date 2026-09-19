@@ -13,5 +13,8 @@
     }
   },
   "postCreateCommand": "cd backend && uv sync --frozen",
-  "remoteUser": "vscode"
+  "remoteUser": "vscode",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {}
+  }
 }
