@@ -1,0 +1,38 @@
+name: AI Review
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: ai-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    environment: Test
+    timeout-minutes: 10
+    steps:
+      # pull_request_target can access secrets, so only trusted code from the
+      # default branch may be checked out and executed in this job.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+      - name: Test review tooling
+        run: python -m unittest discover -s .github/scripts -p 'test_*.py'
+      - name: Review pull request
+        env:
+          AI_REVIEW_MODEL: gpt-5-mini
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: python .github/scripts/ai_review.py
