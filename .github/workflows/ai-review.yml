@@ -1,0 +1,43 @@
+name: AI Review
+
+on:
+  workflow_run:
+    workflows: [Backend]
+    types: [completed]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: ai-review-${{ github.event.workflow_run.pull_requests[0].number || github.event.workflow_run.id }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.pull_requests[0].number != null
+    runs-on: ubuntu-latest
+    environment: Test
+    timeout-minutes: 10
+    steps:
+      # workflow_run can access secrets, so only trusted code from the default
+      # branch may be checked out and executed in this job.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+      - name: Test review tooling
+        run: python -m unittest discover -s .github/scripts -p 'test_*.py'
+      - name: Review pull request
+        env:
+          AI_REVIEW_MODEL: gpt-5-mini
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          EXPECTED_HEAD_SHA: ${{ github.event.workflow_run.pull_requests[0].head.sha }}
+          PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
+        run: python .github/scripts/ai_review.py
