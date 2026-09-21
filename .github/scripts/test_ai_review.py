@@ -70,5 +70,50 @@ class PublishCommentTests(unittest.TestCase):
         )
 
 
+class MainTests(unittest.TestCase):
+    @patch.dict(
+        "os.environ",
+        {
+            "EXPECTED_HEAD_SHA": "new-commit",
+            "GITHUB_REPOSITORY": "owner/repo",
+            "GITHUB_TOKEN": "token",
+            "PR_NUMBER": "7",
+        },
+        clear=True,
+    )
+    @patch("ai_review.create_review")
+    @patch(
+        "ai_review.get_pull_request_diff",
+        return_value=("diff", "old-commit", False, False),
+    )
+    def test_does_not_review_stale_successful_run(
+        self, get_pull_request_diff, create_review
+    ) -> None:
+        ai_review.main()
+
+        get_pull_request_diff.assert_called_once_with("owner/repo", 7, "token")
+        create_review.assert_not_called()
+
+    @patch.dict(
+        "os.environ",
+        {
+            "GITHUB_REPOSITORY": "owner/repo",
+            "GITHUB_TOKEN": "token",
+            "PR_NUMBER": "7",
+        },
+        clear=True,
+    )
+    @patch("ai_review.create_review")
+    @patch(
+        "ai_review.get_pull_request_diff",
+        return_value=("diff", "commit", False, True),
+    )
+    def test_does_not_review_draft(self, get_pull_request_diff, create_review) -> None:
+        ai_review.main()
+
+        get_pull_request_diff.assert_called_once_with("owner/repo", 7, "token")
+        create_review.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()

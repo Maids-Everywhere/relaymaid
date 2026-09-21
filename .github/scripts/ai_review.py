@@ -74,7 +74,7 @@ def request_json(
 
 def get_pull_request_diff(
     repository: str, pull_number: int, github_token: str
-) -> tuple[str, str, bool]:
+) -> tuple[str, str, bool, bool]:
     pull = request_json(
         f"{GITHUB_API_URL}/repos/{repository}/pulls/{pull_number}",
         token=github_token,
@@ -131,6 +131,7 @@ def get_pull_request_diff(
         metadata + "\nChanged files:\n" + "".join(sections),
         pull["head"]["sha"],
         truncated,
+        bool(pull.get("draft")),
     )
 
 
@@ -199,14 +200,22 @@ def publish_comment(
 
 def main() -> None:
     github_token = required_env("GITHUB_TOKEN")
-    openai_api_key = required_env("OPENAI_API_KEY")
     repository = required_env("GITHUB_REPOSITORY")
     pull_number = int(required_env("PR_NUMBER"))
     model = os.environ.get("AI_REVIEW_MODEL", "gpt-5-mini")
 
-    diff, head_sha, truncated = get_pull_request_diff(
+    diff, head_sha, truncated, draft = get_pull_request_diff(
         repository, pull_number, github_token
     )
+    expected_head_sha = os.environ.get("EXPECTED_HEAD_SHA")
+    if draft:
+        print("Skipping AI review for draft pull request")
+        return
+    if expected_head_sha and expected_head_sha != head_sha:
+        print("Skipping AI review because the successful check is for an older commit")
+        return
+
+    openai_api_key = required_env("OPENAI_API_KEY")
     review = create_review(diff, openai_api_key, model)
     scope = (
         "The diff was truncated to fit the model context."
