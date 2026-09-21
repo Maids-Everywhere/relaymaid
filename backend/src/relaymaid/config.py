@@ -4,6 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Ensure .env from project root is loaded into environment variables early
@@ -29,7 +30,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         # point to the absolute .env to ensure it's found when tests run
         env_file=str(_ENV_PATH),
-        # read variables as-is from .env (no prefix)
+        env_prefix="RELAYMAID_",
         extra="allow",
     )
 
@@ -40,10 +41,12 @@ class Settings(BaseSettings):
 
     # -------------- JWT Section --------------
     jwt_lifetime: timedelta = timedelta(minutes=15)
-    # read from JWT_SECRET_TOKEN in .env (project uses unprefixed .env keys)
-    # pydantic will read the env var `JWT_SECRET_TOKEN` by default for
-    # the `jwt_secret_token` field name, so no Field/env override is needed
-    jwt_secret_token: str = ""
+    jwt_secret_token: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "RELAYMAID_JWT_SECRET_TOKEN", "JWT_SECRET_TOKEN", "jwt_secret_token"
+        ),
+    )
 
 
 @lru_cache
