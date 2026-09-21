@@ -1,8 +1,17 @@
 from fastapi import APIRouter, HTTPException, status
 
 from relaymaid.db.dependencies import DatabaseSession
-from relaymaid.schemas import RegisterRequest, RegisterResponse
-from relaymaid.services.exceptions import EmailAlreadyExistsError
+from relaymaid.schemas import (
+    LoginRequest,
+    LoginResponse,
+    RegisterRequest,
+    RegisterResponse,
+)
+from relaymaid.services.auth import authorize_user
+from relaymaid.services.exceptions import (
+    EmailAlreadyExistsError,
+    InvalidCredentialsError,
+)
 from relaymaid.services.registration import register_owner
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -26,4 +35,20 @@ async def register(data: RegisterRequest, session: DatabaseSession) -> RegisterR
         membership_id=result.membership.id,
         email=result.user.email,
         role=result.membership.role,
+    )
+
+
+@router.post("/login", response_model=LoginResponse, status_code=status.HTTP_200_OK)
+async def login(data: LoginRequest, session: DatabaseSession) -> LoginResponse:
+    try:
+        result = await authorize_user(session, data)
+    except InvalidCredentialsError as error:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials"
+        ) from error
+
+    return LoginResponse(
+        user_id=result.user.id,
+        email=result.user.email,
+        access_token=result.access_token,
     )

@@ -27,3 +27,20 @@ class RegisterResponse(BaseModel):
     membership_id: UUID
     email: EmailStr
     role: UserRole
+
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: SecretStr
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: str) -> str:
+        """Normalize the email address."""
+        return str(value).lower().strip()
+
+
+class LoginResponse(BaseModel):
+    user_id: UUID
+    email: EmailStr
+    access_token: str

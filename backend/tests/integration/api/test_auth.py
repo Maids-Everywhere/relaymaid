@@ -39,3 +39,20 @@ async def test_register_returns_409_when_email_already_exists(
     assert first_response.status_code == 201
     assert second_response.status_code == 409
     assert second_response.json() == {"detail": "A user with this email already exists"}
+
+
+@pytest.mark.integration
+@pytest.mark.anyio
+async def test_login_user_via_api(client: AsyncClient) -> None:
+    register_response = await client.post("/auth/register", json=JSON_NEW_USER)
+    assert register_response.status_code == 201
+
+    login_json = {"email": NEW_USER_EMAIL, "password": NEW_USER_PASSWORD}
+    login_response = await client.post("/auth/login", json=login_json)
+
+    assert login_response.status_code == 200
+
+    body = login_response.json()
+    assert body["email"] == NEW_USER_EMAIL
+    assert body["user_id"]
+    assert body["access_token"]
