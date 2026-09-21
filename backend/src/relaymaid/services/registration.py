@@ -1,12 +1,19 @@
 from dataclasses import dataclass
 
 from anyio import to_thread
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from relaymaid.db.models import Membership, Organization, User
 from relaymaid.domain import UserRole
 from relaymaid.schemas import RegisterRequest
 from relaymaid.security import hash_password
+from relaymaid.services.exceptions import EmailAlreadyExistsError
+
+
+def get_constraint_name(exc: IntegrityError) -> str | None:
+    diagnostic = getattr(exc.orig, "diag", None)
+    return getattr(diagnostic, "constraint_name", None)
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,7 +62,11 @@ async def register_owner(
     organization = Organization(name=data.organization_name)
 
     session.add_all([user, organization])
-    await session.flush()
+    try:
+        await session.flush()
+    except IntegrityError as exc:
+        if get_constraint_name(exc) == "uq_users_email":
+            raise EmailAlreadyExistsError from exc
 
     membership = Membership(
         user_id=user.id, organization_id=organization.id, role=UserRole.OWNER
