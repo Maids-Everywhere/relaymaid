@@ -42,6 +42,19 @@ def test_settings_read_jwt_secret_from_env_file(
     assert settings.jwt_secret_token == "dotenv-secret"
 
 
+def test_environment_overrides_env_file(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("JWT_SECRET_TOKEN", "environment-secret")
+    env_file = tmp_path / ".env"
+    env_file.write_text("JWT_SECRET_TOKEN=dotenv-secret\n")
+
+    settings = Settings(_env_file=env_file)
+
+    assert settings.jwt_secret_token == "environment-secret"
+
+
 @pytest.mark.parametrize("secret", [None, ""])
 def test_settings_require_non_empty_jwt_secret(
     monkeypatch: pytest.MonkeyPatch,
