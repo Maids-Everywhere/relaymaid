@@ -11,6 +11,7 @@ from relaymaid.domain import UserRole
 from relaymaid.schemas import RegisterRequest
 from relaymaid.security import verify_password
 from relaymaid.services import register_owner
+from relaymaid.services.exceptions import EmailAlreadyExistsError
 
 EMAIL = "test@example.com"
 PASSWORD = "testpassword123"
@@ -43,6 +44,17 @@ async def test_register_owner_creates_related_records(db_session: AsyncSession):
         PASSWORD,
         result.user.hashed_password,
     )
+
+
+@pytest.mark.integration
+@pytest.mark.anyio
+async def test_register_owner_raises_when_email_already_exists(
+    db_session: AsyncSession,
+) -> None:
+    await register_owner(db_session, REGISTER_REQUEST)
+
+    with pytest.raises(EmailAlreadyExistsError):
+        await register_owner(db_session, REGISTER_REQUEST)
 
 
 @pytest.mark.integration

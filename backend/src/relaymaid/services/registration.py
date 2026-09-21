@@ -67,6 +67,7 @@ async def register_owner(
     except IntegrityError as exc:
         if get_constraint_name(exc) == "uq_users_email":
             raise EmailAlreadyExistsError from exc
+        raise
 
     membership = Membership(
         user_id=user.id, organization_id=organization.id, role=UserRole.OWNER
