@@ -27,8 +27,31 @@ class ExtractOutputTextTests(unittest.TestCase):
         self.assertEqual(ai_review.extract_output_text(response), "Review result")
 
     def test_rejects_response_without_text(self) -> None:
-        with self.assertRaisesRegex(RuntimeError, "did not contain output text"):
-            ai_review.extract_output_text({"output": []})
+        with self.assertRaisesRegex(
+            RuntimeError, "status=completed.*output_types=.*reasoning"
+        ):
+            ai_review.extract_output_text(
+                {"status": "completed", "output": [{"type": "reasoning"}]}
+            )
+
+    def test_reports_incomplete_response_reason(self) -> None:
+        with self.assertRaisesRegex(RuntimeError, "incomplete: max_output_tokens"):
+            ai_review.extract_output_text(
+                {
+                    "status": "incomplete",
+                    "incomplete_details": {"reason": "max_output_tokens"},
+                }
+            )
+
+    def test_reports_model_refusal(self) -> None:
+        with self.assertRaisesRegex(RuntimeError, "refused the review"):
+            ai_review.extract_output_text(
+                {
+                    "output": [
+                        {"content": [{"type": "refusal", "refusal": "Cannot review"}]}
+                    ]
+                }
+            )
 
 
 class ExtractFindingsTests(unittest.TestCase):
@@ -47,6 +70,21 @@ class ExtractFindingsTests(unittest.TestCase):
         }
 
         self.assertEqual(ai_review.extract_findings(response), [{"severity": "HIGH"}])
+
+    @patch("ai_review.request_json")
+    def test_requests_low_reasoning_structured_output(self, request_json) -> None:
+        request_json.return_value = {
+            "output": [
+                {"content": [{"type": "output_text", "text": '{"findings": []}'}]}
+            ]
+        }
+
+        self.assertEqual(ai_review.create_review("diff", "key", "model"), [])
+
+        payload = request_json.call_args.kwargs["payload"]
+        self.assertEqual(payload["max_output_tokens"], 8_000)
+        self.assertEqual(payload["reasoning"], {"effort": "low"})
+        self.assertEqual(payload["text"]["format"], ai_review.REVIEW_FORMAT)
 
 
 class ProjectContextTests(unittest.TestCase):

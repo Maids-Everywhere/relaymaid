@@ -205,11 +205,24 @@ def get_project_context(repository: str, head_sha: str, github_token: str) -> st
 
 
 def extract_output_text(response: dict[str, Any]) -> str:
+    if response.get("status") == "incomplete":
+        reason = (response.get("incomplete_details") or {}).get("reason", "unknown")
+        raise RuntimeError(f"OpenAI response was incomplete: {reason}")
+
     for output in response.get("output", []):
         for content in output.get("content", []):
             if content.get("type") == "output_text" and content.get("text"):
                 return str(content["text"]).strip()
-    raise RuntimeError("OpenAI response did not contain output text")
+            if content.get("type") == "refusal" and content.get("refusal"):
+                raise RuntimeError(f"OpenAI refused the review: {content['refusal']}")
+
+    output_types = [
+        str(output.get("type", "unknown")) for output in response.get("output", [])
+    ]
+    raise RuntimeError(
+        "OpenAI response did not contain output text "
+        f"(status={response.get('status', 'unknown')}, output_types={output_types})"
+    )
 
 
 def extract_findings(response: dict[str, Any]) -> list[dict[str, Any]]:
@@ -229,7 +242,8 @@ def create_review(diff: str, api_key: str, model: str) -> list[dict[str, Any]]:
             "model": model,
             "instructions": SYSTEM_PROMPT,
             "input": diff,
-            "max_output_tokens": 4_000,
+            "max_output_tokens": 8_000,
+            "reasoning": {"effort": "low"},
             "text": {"format": REVIEW_FORMAT},
         },
         openai=True,
