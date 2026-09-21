@@ -1,4 +1,3 @@
-import os
 from datetime import timedelta
 from functools import lru_cache
 from pathlib import Path
@@ -7,18 +6,8 @@ from typing import Literal
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# Ensure .env from project root is loaded into environment variables early
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 _ENV_PATH = _PROJECT_ROOT / ".env"
-if _ENV_PATH.exists():
-    for _line in _ENV_PATH.read_text().splitlines():
-        line = _line.strip()
-        if not line or line.startswith("#"):
-            continue
-        if "=" in line:
-            k, v = line.split("=", 1)
-            # don't override existing env vars
-            os.environ.setdefault(k, v)
 
 
 class Settings(BaseSettings):
@@ -28,7 +17,6 @@ class Settings(BaseSettings):
 
     # -------------- Database Section --------------
     model_config = SettingsConfigDict(
-        # point to the absolute .env to ensure it's found when tests run
         env_file=str(_ENV_PATH),
         env_prefix="RELAYMAID_",
         extra="allow",

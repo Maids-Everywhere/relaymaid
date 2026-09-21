@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
@@ -25,6 +27,19 @@ def test_settings_use_unprefixed_jwt_secret(
     settings = Settings()
 
     assert settings.jwt_secret_token == "test-secret-token"
+
+
+def test_settings_read_jwt_secret_from_env_file(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.delenv("JWT_SECRET_TOKEN", raising=False)
+    env_file = tmp_path / ".env"
+    env_file.write_text("JWT_SECRET_TOKEN=dotenv-secret\n")
+
+    settings = Settings(_env_file=env_file)
+
+    assert settings.jwt_secret_token == "dotenv-secret"
 
 
 @pytest.mark.parametrize("secret", [None, ""])
