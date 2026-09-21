@@ -2,6 +2,8 @@ name: Backend
 
 on:
   push:
+    branches:
+      - main
     paths:
       - "backend/**"
       - ".github/workflows/backend.yml"
@@ -13,6 +15,7 @@ on:
 jobs:
   quality:
     runs-on: ubuntu-latest
+    environment: Test
     services:
       postgres:
         image: postgres:17-alpine
@@ -28,8 +31,10 @@ jobs:
           --health-timeout 3s
           --health-retries 10
     env:
+      RELAYMAID_ENVIRONMENT: test
       RELAYMAID_DATABASE_URL: postgresql+psycopg://relaymaid:relaymaid@localhost:5432/relaymaid
       RELAYMAID_REDIS_URL: redis://localhost:6379/0
+      JWT_SECRET_TOKEN: ${{ secrets.JWT_SECRET_TOKEN }}
     defaults:
       run:
         working-directory: backend
