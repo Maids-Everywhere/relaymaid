@@ -1,4 +1,5 @@
 import pytest
+from pydantic import ValidationError
 
 from relaymaid.config import Settings
 
@@ -24,3 +25,21 @@ def test_settings_use_unprefixed_jwt_secret(
     settings = Settings()
 
     assert settings.jwt_secret_token == "test-secret-token"
+
+
+@pytest.mark.parametrize("secret", [None, ""])
+def test_settings_require_non_empty_jwt_secret(
+    monkeypatch: pytest.MonkeyPatch,
+    secret: str | None,
+) -> None:
+    for variable in (
+        "JWT_SECRET_TOKEN",
+        "RELAYMAID_JWT_SECRET_TOKEN",
+        "jwt_secret_token",
+    ):
+        monkeypatch.delenv(variable, raising=False)
+    if secret is not None:
+        monkeypatch.setenv("JWT_SECRET_TOKEN", secret)
+
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)

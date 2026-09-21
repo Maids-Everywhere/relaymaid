@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     # -------------- JWT Section --------------
     jwt_lifetime: timedelta = timedelta(minutes=15)
     jwt_secret_token: str = Field(
-        default="",
+        min_length=1,
         validation_alias=AliasChoices(
             "RELAYMAID_JWT_SECRET_TOKEN", "JWT_SECRET_TOKEN", "jwt_secret_token"
         ),
