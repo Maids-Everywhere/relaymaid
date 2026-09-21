@@ -9,6 +9,7 @@ permissions:
   contents: read
   issues: write
   pull-requests: write
+  statuses: write
 
 concurrency:
   group: ai-review-${{ github.event.workflow_run.pull_requests[0].number || github.event.workflow_run.id }}
@@ -36,6 +37,7 @@ jobs:
       - name: Review pull request
         env:
           AI_REVIEW_MODEL: gpt-5-mini
+          AI_REVIEW_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           EXPECTED_HEAD_SHA: ${{ github.event.workflow_run.pull_requests[0].head.sha }}
