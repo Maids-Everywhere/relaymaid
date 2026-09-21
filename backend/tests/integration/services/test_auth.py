@@ -56,7 +56,7 @@ async def test_user_authorizes_with_wrong_password(
     assert dummy_user.__class__ is User  # Validate that user exists
 
     login_request = LoginRequest.model_validate(
-        {"email": EMAIL, "password": INVALID_PASSWORD}
+        {"email": "invalid_email@example.com", "password": INVALID_PASSWORD}
     )
 
     with pytest.raises(InvalidCredentialsError):
