@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import UUID
 
 import jwt
@@ -22,7 +22,7 @@ class AuthorizationResult:
 
 async def create_access_token(*, user_id: UUID) -> str:
     settings = get_settings()
-    created_at = datetime.now()
+    created_at = datetime.now(UTC)
 
     payload = {
         "sub": str(user_id),

@@ -8,6 +8,7 @@ services:
       RELAYMAID_ENVIRONMENT: ${RELAYMAID_ENVIRONMENT:-local}
       RELAYMAID_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-relaymaid}:${POSTGRES_PASSWORD:-relaymaid}@postgres:5432/${POSTGRES_DB:-relaymaid}
       RELAYMAID_REDIS_URL: redis://redis:6379/${REDIS_DB:-0}
+      JWT_SECRET_TOKEN: ${JWT_SECRET_TOKEN:?JWT_SECRET_TOKEN is required}
     ports:
       - "8000:8000"
     depends_on:
