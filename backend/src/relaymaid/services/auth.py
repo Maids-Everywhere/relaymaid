@@ -11,7 +11,10 @@ from relaymaid.config import get_settings
 from relaymaid.db.models import User
 from relaymaid.schemas.auth import LoginRequest
 from relaymaid.security import verify_password
-from relaymaid.services.exceptions import InvalidCredentialsError
+from relaymaid.services.exceptions import (
+    InvalidAccessTokenError,
+    InvalidCredentialsError,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,6 +34,19 @@ async def create_access_token(*, user_id: UUID) -> str:
     }
 
     return jwt.encode(payload, settings.jwt_secret_token, algorithm="HS256")
+
+
+async def decode_access_token(*, access_token: str):
+    try:
+        payload = jwt.decode(
+            access_token,
+            get_settings().jwt_secret_token,
+            algorithms="HS256",
+            options={"require": ["sub", "iat", "exp"]},
+        )
+        return UUID(payload["sub"])
+    except (jwt.InvalidTokenError, ValueError, KeyError, TypeError) as exc:
+        raise InvalidAccessTokenError from exc
 
 
 async def authorize_user(

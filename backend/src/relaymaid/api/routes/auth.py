@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, status
 
 from relaymaid.db.dependencies import DatabaseSession
+from relaymaid.dependencies.auth import CurrentUser
 from relaymaid.schemas import (
     LoginRequest,
     LoginResponse,
@@ -52,3 +53,11 @@ async def login(data: LoginRequest, session: DatabaseSession) -> LoginResponse:
         email=result.user.email,
         access_token=result.access_token,
     )
+
+
+@router.get("/me")
+async def get_me(current_user: CurrentUser) -> dict[str, str]:
+    return {
+        "id": str(current_user.id),
+        "email": current_user.email,
+    }
