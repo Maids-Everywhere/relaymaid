@@ -1,14 +1,16 @@
 from fastapi import APIRouter, HTTPException, status
 
-from relaymaid.db.dependencies import DatabaseSession
-from relaymaid.dependencies.auth import CurrentUser
-from relaymaid.schemas import (
+from relaymaid.api.dependencies.auth import CurrentPrincipal
+from relaymaid.api.dependencies.database import DatabaseSession
+from relaymaid.api.schemas import (
+    CurrentUserResponse,
     LoginRequest,
     LoginResponse,
     RegisterRequest,
     RegisterResponse,
 )
-from relaymaid.services.auth import authorize_user
+from relaymaid.config import get_settings
+from relaymaid.services.authentication import authenticate_user
 from relaymaid.services.exceptions import (
     EmailAlreadyExistsError,
     InvalidCredentialsError,
@@ -23,7 +25,12 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 )
 async def register(data: RegisterRequest, session: DatabaseSession) -> RegisterResponse:
     try:
-        result = await register_owner(session, data)
+        result = await register_owner(
+            session,
+            email=str(data.email),
+            password=data.password.get_secret_value(),
+            organization_name=data.organization_name,
+        )
     except EmailAlreadyExistsError as error:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -31,33 +38,44 @@ async def register(data: RegisterRequest, session: DatabaseSession) -> RegisterR
         ) from error
 
     return RegisterResponse(
-        user_id=result.user.id,
-        organization_id=result.organization.id,
-        membership_id=result.membership.id,
-        email=result.user.email,
-        role=result.membership.role,
+        user_id=result.user_id,
+        organization_id=result.organization_id,
+        membership_id=result.membership_id,
+        email=result.email,
+        role=result.role,
     )
 
 
 @router.post("/login", response_model=LoginResponse, status_code=status.HTTP_200_OK)
 async def login(data: LoginRequest, session: DatabaseSession) -> LoginResponse:
+    settings = get_settings()
     try:
-        result = await authorize_user(session, data)
+        result = await authenticate_user(
+            session,
+            email=str(data.email),
+            password=data.password.get_secret_value(),
+            token_secret=settings.jwt_secret_token,
+            token_lifetime=settings.jwt_lifetime,
+        )
     except InvalidCredentialsError as error:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials"
         ) from error
 
     return LoginResponse(
-        user_id=result.user.id,
-        email=result.user.email,
+        user_id=result.user_id,
+        organization_id=result.organization_id,
+        email=result.email,
+        role=result.role,
         access_token=result.access_token,
     )
 
 
-@router.get("/me")
-async def get_me(current_user: CurrentUser) -> dict[str, str]:
-    return {
-        "id": str(current_user.id),
-        "email": current_user.email,
-    }
+@router.get("/me", response_model=CurrentUserResponse)
+async def get_me(current_user: CurrentPrincipal) -> CurrentUserResponse:
+    return CurrentUserResponse(
+        user_id=current_user.user_id,
+        organization_id=current_user.organization_id,
+        email=current_user.email,
+        role=current_user.role,
+    )

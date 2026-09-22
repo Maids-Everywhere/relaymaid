@@ -1,6 +1,6 @@
-from relaymaid.domain.roles import UserRole
+from relaymaid.domain.roles import MembershipRole
 
 
-def test_user_role_enum():
-    assert UserRole.OWNER == "owner"
-    assert UserRole.VIEWER == "viewer"
+def test_membership_role_enum() -> None:
+    assert MembershipRole.OWNER == "owner"
+    assert MembershipRole.VIEWER == "viewer"

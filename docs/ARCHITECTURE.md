@@ -101,6 +101,8 @@ Versions are proposed rather than locked until the runnable skeleton is created.
 3. Secret encryption/key management interface for local and deployed environments.
 4. Delivery lease schema and uncertain-outcome recovery behavior.
 5. Retry defaults and exact status-code policy.
-6. Whether login emails are globally unique or organization-scoped.
-7. Hosting platform and infrastructure egress controls.
+6. Hosting platform and infrastructure egress controls.
 
+Global login email identity and tenant selection are resolved by ADR-002. The
+current login contract infers a sole membership; explicit organization selection
+will be provided in a later authentication slice.

@@ -1,14 +1,6 @@
 class EmailAlreadyExistsError(Exception):
-    """Raises if user already registered"""
-
-    pass
+    """Raised when registration uses an existing email address."""
 
 
 class InvalidCredentialsError(Exception):
-    """Raises if credentials are invalid"""
-
-    pass
-
-
-class InvalidAccessTokenError(Exception):
-    """Raises if access token is invalid"""
+    """Raised when supplied credentials cannot authenticate a user."""

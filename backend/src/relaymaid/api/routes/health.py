@@ -6,7 +6,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from relaymaid.db.dependencies import get_db_engine
+from relaymaid.api.dependencies.database import get_db_engine
 
 router = APIRouter(tags=["health"], prefix="/health")
 DatabaseEngine = Annotated[AsyncEngine, Depends(get_db_engine)]

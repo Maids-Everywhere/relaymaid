@@ -1,3 +1,4 @@
-from .roles import UserRole
+from .principal import AuthenticatedPrincipal
+from .roles import MembershipRole
 
-__all__ = ["UserRole"]
+__all__ = ["AuthenticatedPrincipal", "MembershipRole"]
