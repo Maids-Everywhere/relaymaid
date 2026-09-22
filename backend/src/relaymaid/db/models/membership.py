@@ -5,7 +5,7 @@ from sqlalchemy import DateTime, Enum, ForeignKey, Index, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from relaymaid.db.base import Base
-from relaymaid.domain.roles import UserRole
+from relaymaid.domain.roles import MembershipRole
 
 
 class Membership(Base):
@@ -29,9 +29,9 @@ class Membership(Base):
     organization_id: Mapped[UUID] = mapped_column(
         ForeignKey("organizations.id"), nullable=False
     )
-    role: Mapped[UserRole] = mapped_column(
+    role: Mapped[MembershipRole] = mapped_column(
         Enum(
-            UserRole,
+            MembershipRole,
             name="membership_role",
             native_enum=False,
             create_constraint=True,

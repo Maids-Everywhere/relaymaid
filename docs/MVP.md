@@ -31,6 +31,8 @@ destination-side idempotency can prevent a repeated business operation.
 
 - Organizations and users with `owner` and `viewer` roles.
 - Email/password login and short-lived JWT access tokens.
+- The current login flow infers a user's sole organization. Explicit organization
+  selection for multi-organization users will be provided in a later slice.
 - Webhook endpoint creation, listing, update, enable/disable, and secret creation.
 - Public ingestion endpoint identified by an unguessable endpoint key.
 - JSON payloads with explicit size and content-type limits.
@@ -112,4 +114,3 @@ configuration, or trigger delivery.
 The MVP runs locally with one documented command, passes linting, typing and
 tests in CI, demonstrates two isolated organizations, and includes a scripted
 success, retry, permanent failure, duplicate ingestion, and cross-tenant denial.
-
