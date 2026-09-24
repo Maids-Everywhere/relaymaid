@@ -1,7 +1,7 @@
 from datetime import timedelta
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from relaymaid.db.models import Membership, Organization, User
@@ -45,6 +45,15 @@ async def test_user_authenticates_with_valid_credentials(
         token_lifetime=TOKEN_LIFETIME,
     )
 
+    user_context = await db_session.scalar(
+        text("SELECT current_setting('relaymaid.user_id', true)")
+    )
+    tenant_context = await db_session.scalar(
+        text("SELECT current_setting('relaymaid.organization_id', true)")
+    )
+
+    assert user_context == str(result.user_id)
+    assert tenant_context == str(result.organization_id)
     assert result.user_id == dummy_user.id
     assert result.organization_id is not None
     assert result.email == dummy_user.email

@@ -11,6 +11,7 @@ from relaymaid.domain import MembershipRole
 from relaymaid.security.passwords import verify_password
 from relaymaid.security.tokens import create_access_token
 from relaymaid.services.exceptions import InvalidCredentialsError
+from relaymaid.db.tenant_context import set_user_context, set_tenant_context
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,6 +43,8 @@ async def authenticate_user(
     if not password_matches or not user.is_active:
         raise InvalidCredentialsError
 
+    await set_user_context(session=session, user_id=user.id)
+
     memberships = list(
         await session.scalars(select(Membership).where(Membership.user_id == user.id))
     )
@@ -49,6 +52,10 @@ async def authenticate_user(
         raise InvalidCredentialsError
 
     membership = memberships[0]
+
+    await set_tenant_context(
+        session=session, organization_id=membership.organization_id
+    )
 
     return AuthenticationResult(
         user_id=user.id,

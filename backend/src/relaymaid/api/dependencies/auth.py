@@ -9,6 +9,7 @@ from relaymaid.config import get_settings
 from relaymaid.db.models import Membership, User
 from relaymaid.domain import AuthenticatedPrincipal
 from relaymaid.security.tokens import InvalidAccessTokenError, decode_access_token
+from relaymaid.db.tenant_context import set_tenant_context, set_user_context
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -36,6 +37,10 @@ async def get_current_principal(
         )
     except InvalidAccessTokenError as exc:
         raise unauthorized from exc
+
+    await set_user_context(session=session, user_id=claims.user_id)
+
+    await set_tenant_context(session=session, organization_id=claims.organization_id)
 
     principal_row = (
         await session.execute(
