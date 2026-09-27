@@ -36,7 +36,7 @@ def migrated_postgres_url(
     postgres_url: str,
 ) -> Iterator[str]:
     alembic_config = Config(BACKEND_ROOT / "alembic.ini")
-    alembic_config.attributes["database_url"] = postgres_url
+    alembic_config.attributes["migration_database_url"] = postgres_url
     alembic_config.set_main_option(
         "sqlalchemy.url",
         postgres_url,
