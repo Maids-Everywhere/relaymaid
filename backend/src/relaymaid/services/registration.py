@@ -6,10 +6,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from relaymaid.db.models import Membership, Organization, User
+from relaymaid.db.tenant_context import set_tenant_context, set_user_context
 from relaymaid.domain import MembershipRole
 from relaymaid.security.passwords import hash_password
 from relaymaid.services.exceptions import EmailAlreadyExistsError
-from relaymaid.db.tenant_context import set_user_context, set_tenant_context
 
 
 def get_constraint_name(exc: IntegrityError) -> str | None:

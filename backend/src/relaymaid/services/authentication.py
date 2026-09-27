@@ -7,11 +7,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from relaymaid.db.models import Membership, User
+from relaymaid.db.tenant_context import set_tenant_context, set_user_context
 from relaymaid.domain import MembershipRole
 from relaymaid.security.passwords import verify_password
 from relaymaid.security.tokens import create_access_token
 from relaymaid.services.exceptions import InvalidCredentialsError
-from relaymaid.db.tenant_context import set_user_context, set_tenant_context
 
 
 @dataclass(frozen=True, slots=True)
