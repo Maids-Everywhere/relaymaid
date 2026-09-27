@@ -7,15 +7,24 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 import relaymaid.db.models  # noqa: F401
-from relaymaid.config import get_settings
+from relaymaid.config import get_migration_settings
 from relaymaid.db.base import Base
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
-settings = get_settings()
 
-database_url = config.attributes.get("database_url", settings.database_url)
+database_url = config.attributes.get("migration_database_url")
+
+if not database_url:
+    database_url = get_migration_settings().migration_database_url
+
+if database_url is None:
+    raise RuntimeError(
+        "Migration database URL is not configured. "
+        "Set RELAYMAID_MIGRATION_DATABASE_URL."
+    )
+
 config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 
 # Interpret the config file for Python logging.

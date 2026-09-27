@@ -16,5 +16,14 @@
   "remoteUser": "vscode",
   "features": {
     "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {}
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "openai.chatgpt",
+        "charliermarsh.ruff",
+        "ms-python.mypy-type-checker"
+      ]
+    }
   }
 }

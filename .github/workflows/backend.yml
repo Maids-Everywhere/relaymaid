@@ -6,12 +6,20 @@ on:
       - main
     paths:
       - "backend/**"
+      - "infra/postgres/**"
+      - ".env.example"
+      - "compose.yaml"
+      - ".devcontainer/compose.yaml"
       - ".github/scripts/**"
       - ".github/workflows/ai-review.yml"
       - ".github/workflows/backend.yml"
   pull_request:
     paths:
       - "backend/**"
+      - "infra/postgres/**"
+      - ".env.example"
+      - "compose.yaml"
+      - ".devcontainer/compose.yaml"
       - ".github/scripts/**"
       - ".github/workflows/ai-review.yml"
       - ".github/workflows/backend.yml"
@@ -24,19 +32,23 @@ jobs:
       postgres:
         image: postgres:17-alpine
         env:
-          POSTGRES_DB: relaymaid
-          POSTGRES_USER: relaymaid
-          POSTGRES_PASSWORD: relaymaid
+          POSTGRES_DB: postgres
+          POSTGRES_USER: postgres_bootstrap
+          POSTGRES_PASSWORD: ci_bootstrap_password
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U relaymaid -d relaymaid"
+          --health-cmd "pg_isready -U postgres_bootstrap -d postgres"
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
     env:
       RELAYMAID_ENVIRONMENT: test
-      RELAYMAID_DATABASE_URL: postgresql+psycopg://relaymaid:relaymaid@localhost:5432/relaymaid
+      RELAYMAID_DB_NAME: relaymaid
+      RELAYMAID_APP_USER: relaymaid_app
+      RELAYMAID_APP_PASSWORD: ci_app_password
+      RELAYMAID_MIGRATOR_USER: relaymaid_migrator
+      RELAYMAID_MIGRATOR_PASSWORD: ci_migrator_password
       RELAYMAID_REDIS_URL: redis://localhost:6379/0
       JWT_SECRET_TOKEN: ${{ secrets.JWT_SECRET_TOKEN }}
     defaults:
@@ -53,6 +65,21 @@ jobs:
       - run: uv run mypy
       - name: Test AI review tooling
         run: uv run python -m unittest discover -s ../.github/scripts -p 'test_*.py'
+      - name: Initialize database roles
+        env:
+          POSTGRES_CONTAINER_ID: ${{ job.services.postgres.id }}
+        run: |
+          docker exec -i \
+            --env RELAYMAID_DB_NAME \
+            --env RELAYMAID_APP_USER \
+            --env RELAYMAID_APP_PASSWORD \
+            --env RELAYMAID_MIGRATOR_USER \
+            --env RELAYMAID_MIGRATOR_PASSWORD \
+            "$POSTGRES_CONTAINER_ID" sh -s < ../infra/postgres/init/01-create-roles.sh
+      - name: Configure database URLs
+        run: |
+          echo "RELAYMAID_DATABASE_URL=postgresql+psycopg://${RELAYMAID_APP_USER}:${RELAYMAID_APP_PASSWORD}@localhost:5432/${RELAYMAID_DB_NAME}" >> "$GITHUB_ENV"
+          echo "RELAYMAID_MIGRATION_DATABASE_URL=postgresql+psycopg://${RELAYMAID_MIGRATOR_USER}:${RELAYMAID_MIGRATOR_PASSWORD}@localhost:5432/${RELAYMAID_DB_NAME}" >> "$GITHUB_ENV"
       - name: Apply database migrations
         run: uv run alembic upgrade head
       - run: uv run pytest
