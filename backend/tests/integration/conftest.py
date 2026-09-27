@@ -69,12 +69,27 @@ def session_factory(
 
 
 @pytest.fixture
-async def db_session(
+async def raw_db_session(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> AsyncIterator[AsyncSession]:
-
+    """Provide a session for tests that manage transaction boundaries themselves."""
     async with session_factory() as session:
         yield session
+
+
+@pytest.fixture
+async def db_session(
+    raw_db_session: AsyncSession,
+) -> AsyncIterator[AsyncSession]:
+    """Provide an active transaction and roll back test data during teardown.
+
+    Use raw_db_session when testing explicit commit or rollback boundaries.
+    """
+    await raw_db_session.begin()
+    try:
+        yield raw_db_session
+    finally:
+        await raw_db_session.rollback()
 
 
 @pytest.fixture

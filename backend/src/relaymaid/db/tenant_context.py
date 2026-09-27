@@ -14,7 +14,7 @@ _SET_CONTEXT_SQL = text(
 )
 
 
-async def set_user_context(session: AsyncSession, user_id: UUID):
+async def set_user_context(session: AsyncSession, user_id: UUID) -> None:
     if not session.in_transaction():
         raise RuntimeError("User context requires an active transaction")
 

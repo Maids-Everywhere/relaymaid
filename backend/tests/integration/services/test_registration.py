@@ -69,7 +69,7 @@ async def test_register_owner_raises_when_email_already_exists(
 @pytest.mark.integration
 @pytest.mark.anyio
 async def test_registration_rolls_back_when_membership_fails(
-    db_session: AsyncSession,
+    raw_db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def create_broken_membership(
@@ -93,23 +93,23 @@ async def test_registration_rolls_back_when_membership_fails(
     )
 
     with pytest.raises(IntegrityError):
-        async with db_session.begin():
+        async with raw_db_session.begin():
             await register_owner(
-                db_session,
+                raw_db_session,
                 email=EMAIL,
                 password=PASSWORD,
                 organization_name=ORGANIZATION_NAME,
             )
 
-    user_count = await db_session.scalar(
+    user_count = await raw_db_session.scalar(
         select(func.count()).select_from(User).where(User.email == EMAIL)
     )
-    organization_count = await db_session.scalar(
+    organization_count = await raw_db_session.scalar(
         select(func.count())
         .select_from(Organization)
         .where(Organization.name == ORGANIZATION_NAME)
     )
-    membership_count = await db_session.scalar(
+    membership_count = await raw_db_session.scalar(
         select(func.count()).select_from(Membership)
     )
 

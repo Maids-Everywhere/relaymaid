@@ -94,20 +94,20 @@ async def read_setting(session: AsyncSession, setting_name: str) -> str | None:
 )
 @pytest.mark.parametrize("transaction_end", ["commit", "rollback"])
 async def test_set_context_expires_when_transaction_ends(
-    db_session: AsyncSession,
+    raw_db_session: AsyncSession,
     set_context: ContextSetter,
     setting_name: str,
     transaction_end: str,
 ) -> None:
     context_id = uuid4()
-    transaction = await db_session.begin()
+    transaction = await raw_db_session.begin()
 
-    await set_context(db_session, context_id)
-    assert await read_setting(db_session, setting_name) == str(context_id)
+    await set_context(raw_db_session, context_id)
+    assert await read_setting(raw_db_session, setting_name) == str(context_id)
 
     if transaction_end == "commit":
         await transaction.commit()
     else:
         await transaction.rollback()
 
-    assert await read_setting(db_session, setting_name) is None
+    assert await read_setting(raw_db_session, setting_name) is None
