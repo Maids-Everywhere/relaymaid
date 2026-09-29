@@ -198,3 +198,79 @@ async def test_cannot_change_organization_id_to_escape_tenant(
         await db_session.scalar(text("SELECT id FROM organizations"))
         == organizations[0]
     )
+
+
+@pytest.mark.parametrize("operation", ["select", "update", "delete"])
+async def test_explicit_foreign_organization_id_does_not_bypass_rls(
+    db_session: AsyncSession, organizations: tuple[UUID, UUID], operation: str
+) -> None:
+    await set_tenant_context(db_session, organizations[0])
+    statements = {
+        "select": "SELECT id FROM organizations WHERE id = :id",
+        "update": (
+            "UPDATE organizations SET name = 'Blocked' WHERE id = :id RETURNING id"
+        ),
+        "delete": "DELETE FROM organizations WHERE id = :id RETURNING id",
+    }
+    assert (
+        list(
+            await db_session.scalars(
+                text(statements[operation]), {"id": organizations[1]}
+            )
+        )
+        == []
+    )
+    await set_tenant_context(db_session, organizations[1])
+    assert await db_session.scalar(text("SELECT name FROM organizations")) == "B"
+
+
+@pytest.mark.parametrize("operation", ["select", "insert", "update", "delete"])
+async def test_malformed_tenant_context_fails_closed(
+    db_session: AsyncSession, organizations: tuple[UUID, UUID], operation: str
+) -> None:
+    await db_session.execute(
+        text("SELECT set_config('relaymaid.organization_id', 'not-a-uuid', true)")
+    )
+    statements = {
+        "select": "SELECT id FROM organizations",
+        "insert": "INSERT INTO organizations (id, name) VALUES (:id, 'Blocked')",
+        "update": "UPDATE organizations SET name = 'Blocked'",
+        "delete": "DELETE FROM organizations",
+    }
+    with pytest.raises(DBAPIError, match="invalid input syntax for type uuid") as error:
+        async with db_session.begin_nested():
+            await db_session.execute(text(statements[operation]), {"id": uuid4()})
+    assert getattr(error.value.orig, "sqlstate", None) == "22P02"
+    for organization_id, name in zip(organizations, ("A", "B"), strict=True):
+        await set_tenant_context(db_session, organization_id)
+        assert await db_session.scalar(text("SELECT name FROM organizations")) == name
+
+
+async def test_user_context_alone_does_not_authorize_organization_access(
+    db_session: AsyncSession, organizations: tuple[UUID, UUID]
+) -> None:
+    # Even using the organization's UUID as the user ID cannot supply tenant context.
+    await db_session.execute(
+        text("SELECT set_config('relaymaid.user_id', :id, true)"),
+        {"id": str(organizations[0])},
+    )
+    assert list(await db_session.scalars(text("SELECT id FROM organizations"))) == []
+    assert (
+        list(
+            await db_session.scalars(
+                text("UPDATE organizations SET name = 'Blocked' RETURNING id")
+            )
+        )
+        == []
+    )
+    assert (
+        list(await db_session.scalars(text("DELETE FROM organizations RETURNING id")))
+        == []
+    )
+    with pytest.raises(DBAPIError, match="row-level security policy") as error:
+        async with db_session.begin_nested():
+            await db_session.execute(
+                text("INSERT INTO organizations (id, name) VALUES (:id, 'Blocked')"),
+                {"id": uuid4()},
+            )
+    assert getattr(error.value.orig, "sqlstate", None) == "42501"
