@@ -50,7 +50,7 @@ def upgrade() -> None:
 
     op.execute(
         """
-        CREATE POLICY organization_select_own
+        CREATE POLICY organizations_select_own
         ON organizations
         FOR SELECT
         USING (
@@ -75,7 +75,7 @@ def downgrade() -> None:
     """Downgrade schema."""
     op.execute(
         """
-        DROP POLICY organization_select_own
+        DROP POLICY organizations_select_own
         ON organizations
         """
     )
