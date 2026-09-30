@@ -69,10 +69,7 @@ def upgrade() -> None:
         FOR INSERT
         WITH CHECK (
             user_id = public.relaymaid_current_user_id()
-            AND (
-                public.relaymaid_current_organization_id() IS NULL
-                OR organization_id = public.relaymaid_current_organization_id()
-            )
+            AND organization_id = public.relaymaid_current_organization_id()
         )
         """
     )

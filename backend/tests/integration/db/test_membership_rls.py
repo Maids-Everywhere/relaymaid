@@ -158,7 +158,7 @@ async def test_select_memberships_scopes_user_and_optional_organization(
 @pytest.mark.parametrize(
     "org_context", ["matching", "other", "missing", "empty", "unknown"]
 )
-async def test_insert_membership_requires_self_and_optional_matching_organization(
+async def test_insert_membership_requires_matching_user_and_organization(
     db_session: AsyncSession,
     memberships: MembershipData,
     user_context: str,
@@ -171,7 +171,7 @@ async def test_insert_membership_requires_self_and_optional_matching_organizatio
         "(:id, :user, :org, 'viewer') RETURNING id"
     )
     parameters = {"id": uuid4(), "user": memberships.users[0], "org": target_org}
-    if user_context == "own" and org_context in {"matching", "missing", "empty"}:
+    if user_context == "own" and org_context == "matching":
         assert await db_session.scalar(statement, parameters) == parameters["id"]
     else:
         with pytest.raises(DBAPIError, match="row-level security policy") as error:
