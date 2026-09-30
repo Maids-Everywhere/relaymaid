@@ -1,8 +1,8 @@
 """create webhook endpoints table
 
-Revision ID: 2e334d9c8399
+Revision ID: 6ab4c49ed5e4
 Revises: 8fb97b5600aa
-Create Date: 2026-09-30 20:30:50.932923
+Create Date: 2026-09-30 20:43:04.474185
 
 """
 
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "2e334d9c8399"
+revision: str = "6ab4c49ed5e4"
 down_revision: str | Sequence[str] | None = "8fb97b5600aa"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None

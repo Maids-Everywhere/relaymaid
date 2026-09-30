@@ -11,6 +11,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
     text,
+    true,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -64,7 +65,7 @@ class WebhookEndpoint(Base):
     )
     enabled: Mapped[bool] = mapped_column(
         nullable=False,
-        default=True,
+        default=true(),
     )
     retry_limit: Mapped[int] = mapped_column(
         nullable=False,
