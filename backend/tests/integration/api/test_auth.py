@@ -3,7 +3,7 @@ from uuid import UUID, uuid4
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import func, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 import relaymaid.services.registration as registration_module
@@ -88,8 +88,9 @@ async def test_register_rolls_back_all_records_when_membership_fails(
         create_broken_membership,
     )
 
-    with pytest.raises(IntegrityError):
+    with pytest.raises(DBAPIError, match="row-level security policy") as error:
         await client.post("/auth/register", json=JSON_NEW_USER)
+    assert getattr(error.value.orig, "sqlstate", None) == "42501"
 
     async with session_factory() as session:
         user_count = await session.scalar(select(func.count()).select_from(User))

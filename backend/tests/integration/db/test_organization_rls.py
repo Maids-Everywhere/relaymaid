@@ -130,23 +130,34 @@ async def test_without_matching_context_cannot_read_or_modify_rows(
         )
 
 
-async def test_update_and_delete_only_affect_current_organization(
-    db_session: AsyncSession, organizations: tuple[UUID, UUID]
+@pytest.mark.parametrize("operation", ["update", "delete"])
+@pytest.mark.parametrize(
+    "context", ["matching", "missing", "empty", "unknown", "malformed"]
+)
+async def test_update_and_delete_denied_regardless_of_tenant_context(
+    db_session: AsyncSession,
+    organizations: tuple[UUID, UUID],
+    operation: str,
+    context: str,
 ) -> None:
-    first, second = organizations
-    await set_tenant_context(db_session, first)
-    assert list(
-        await db_session.scalars(
-            text("UPDATE organizations SET name = 'Updated' RETURNING id")
+    if context == "matching":
+        await set_tenant_context(db_session, organizations[0])
+    elif context == "unknown":
+        await set_tenant_context(db_session, uuid4())
+    elif context in {"empty", "malformed"}:
+        await db_session.execute(
+            text("SELECT set_config('relaymaid.organization_id', :value, true)"),
+            {"value": "" if context == "empty" else "not-a-uuid"},
         )
-    ) == [first]
-    assert await db_session.scalar(text("SELECT name FROM organizations")) == "Updated"
-    assert list(
-        await db_session.scalars(text("DELETE FROM organizations RETURNING id"))
-    ) == [first]
-    assert await db_session.scalar(text("SELECT id FROM organizations")) is None
-    await set_tenant_context(db_session, second)
-    assert await db_session.scalar(text("SELECT name FROM organizations")) == "B"
+    statement = (
+        "UPDATE organizations SET name = 'Blocked' RETURNING id"
+        if operation == "update"
+        else "DELETE FROM organizations RETURNING id"
+    )
+    assert list(await db_session.scalars(text(statement))) == []
+    for organization_id, name in zip(organizations, ("A", "B"), strict=True):
+        await set_tenant_context(db_session, organization_id)
+        assert await db_session.scalar(text("SELECT name FROM organizations")) == name
 
 
 async def test_insert_with_matching_context_succeeds(
@@ -188,12 +199,14 @@ async def test_cannot_change_organization_id_to_escape_tenant(
     db_session: AsyncSession, organizations: tuple[UUID, UUID]
 ) -> None:
     await set_tenant_context(db_session, organizations[0])
-    with pytest.raises(DBAPIError, match="row-level security policy") as error:
-        async with db_session.begin_nested():
-            await db_session.execute(
-                text("UPDATE organizations SET id = :id"), {"id": uuid4()}
+    assert (
+        list(
+            await db_session.scalars(
+                text("UPDATE organizations SET id = :id RETURNING id"), {"id": uuid4()}
             )
-    assert getattr(error.value.orig, "sqlstate", None) == "42501"
+        )
+        == []
+    )
     assert (
         await db_session.scalar(text("SELECT id FROM organizations"))
         == organizations[0]
@@ -224,7 +237,7 @@ async def test_explicit_foreign_organization_id_does_not_bypass_rls(
     assert await db_session.scalar(text("SELECT name FROM organizations")) == "B"
 
 
-@pytest.mark.parametrize("operation", ["select", "insert", "update", "delete"])
+@pytest.mark.parametrize("operation", ["select", "insert"])
 async def test_malformed_tenant_context_fails_closed(
     db_session: AsyncSession, organizations: tuple[UUID, UUID], operation: str
 ) -> None:

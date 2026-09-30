@@ -50,15 +50,23 @@ def upgrade() -> None:
 
     op.execute(
         """
-        CREATE POLICY organizations_tenant_isolation
+        CREATE POLICY organization_select_own
         ON organizations
-        FOR ALL
+        FOR SELECT
         USING (
             id = public.relaymaid_current_organization_id()
         )
+        """
+    )
+
+    op.execute(
+        """
+        CREATE POLICY organizations_insert_own
+        ON organizations
+        FOR INSERT
         WITH CHECK (
             id = public.relaymaid_current_organization_id()
-        )
+        );
         """
     )
 
@@ -67,7 +75,14 @@ def downgrade() -> None:
     """Downgrade schema."""
     op.execute(
         """
-        DROP POLICY organizations_tenant_isolation
+        DROP POLICY organization_select_own
+        ON organizations
+        """
+    )
+
+    op.execute(
+        """
+        DROP POLICY organizations_insert_own
         ON organizations
         """
     )
