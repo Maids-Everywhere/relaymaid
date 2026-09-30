@@ -18,7 +18,7 @@ from relaymaid.db.base import Base
 
 
 class WebhookEndpoint(Base):
-    __tablename__ = "webhook_enpoints"
+    __tablename__ = "webhook_endpoints"
     __table_args__ = (
         UniqueConstraint(
             "organization_id",
