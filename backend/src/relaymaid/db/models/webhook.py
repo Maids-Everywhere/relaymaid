@@ -65,11 +65,11 @@ class WebhookEndpoint(Base):
     )
     enabled: Mapped[bool] = mapped_column(
         nullable=False,
-        default=true(),
+        server_default=true(),
     )
     retry_limit: Mapped[int] = mapped_column(
         nullable=False,
-        default=text("3"),
+        server_default=text("3"),
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

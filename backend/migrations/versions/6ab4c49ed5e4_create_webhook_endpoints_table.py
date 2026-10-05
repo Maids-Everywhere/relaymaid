@@ -29,8 +29,10 @@ def upgrade() -> None:
         sa.Column("name", sa.String(length=200), nullable=False),
         sa.Column("secret_ciphertext", sa.Text(), nullable=False),
         sa.Column("destination_url", sa.String(length=2048), nullable=False),
-        sa.Column("enabled", sa.Boolean(), nullable=False),
-        sa.Column("retry_limit", sa.Integer(), nullable=False),
+        sa.Column("enabled", sa.Boolean(), nullable=False, server_default=sa.true()),
+        sa.Column(
+            "retry_limit", sa.Integer(), nullable=False, server_default=sa.text("3")
+        ),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
