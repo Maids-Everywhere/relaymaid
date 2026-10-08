@@ -65,4 +65,16 @@ async def get_current_principal(
     )
 
 
+async def require_owner(
+    principal: Annotated[AuthenticatedPrincipal, Depends(get_current_principal)],
+) -> AuthenticatedPrincipal:
+    if principal.role != "owner":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to perform this action",
+        )
+    return principal
+
+
 CurrentPrincipal = Annotated[AuthenticatedPrincipal, Depends(get_current_principal)]
+OwnerPrincipal = Annotated[AuthenticatedPrincipal, Depends(require_owner)]
