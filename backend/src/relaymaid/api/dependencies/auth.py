@@ -9,6 +9,7 @@ from relaymaid.config import get_settings
 from relaymaid.db.models import Membership, User
 from relaymaid.db.tenant_context import set_tenant_context, set_user_context
 from relaymaid.domain import AuthenticatedPrincipal
+from relaymaid.domain.roles import MembershipRole
 from relaymaid.security.tokens import InvalidAccessTokenError, decode_access_token
 
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -68,7 +69,7 @@ async def get_current_principal(
 async def require_owner(
     principal: Annotated[AuthenticatedPrincipal, Depends(get_current_principal)],
 ) -> AuthenticatedPrincipal:
-    if principal.role != "owner":
+    if principal.role != MembershipRole.OWNER:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You do not have permission to perform this action",
