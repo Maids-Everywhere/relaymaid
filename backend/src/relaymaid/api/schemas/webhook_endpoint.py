@@ -46,5 +46,5 @@ class WebhookEndpointResponse(BaseModel):
     created_at: datetime
 
 
-class WebhookEndpointCreateResponse(BaseModel):
+class WebhookEndpointCreateResponse(WebhookEndpointResponse):
     secret: str = Field(repr=False)

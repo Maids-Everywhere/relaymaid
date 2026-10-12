@@ -20,29 +20,47 @@ PAYLOAD = {
 }
 
 
-def test_response_parses_json_values_and_serializes() -> None:
-    response = WebhookEndpointResponse.model_validate(PAYLOAD)
-    assert response.id == UUID(str(PAYLOAD["id"]))
-    assert response.public_id == UUID(str(PAYLOAD["public_id"]))
+@pytest.fixture(params=[WebhookEndpointResponse, WebhookEndpointCreateResponse])
+def response_model(request: pytest.FixtureRequest) -> type[WebhookEndpointResponse]:
+    return request.param
+
+
+@pytest.fixture
+def response_payload(
+    response_model: type[WebhookEndpointResponse],
+) -> dict[str, object]:
+    payload = dict(PAYLOAD)
+    if response_model is WebhookEndpointCreateResponse:
+        payload["secret"] = "test-webhook-secret"
+    return payload
+
+
+def test_response_parses_json_values_and_serializes(
+    response_model: type[WebhookEndpointResponse],
+    response_payload: dict[str, object],
+) -> None:
+    response = response_model.model_validate(response_payload)
+    assert response.id == UUID(str(response_payload["id"]))
+    assert response.public_id == UUID(str(response_payload["public_id"]))
     assert response.name == "Webhook"
-    assert str(response.destination_url) == PAYLOAD["destination_url"]
+    assert str(response.destination_url) == response_payload["destination_url"]
     assert response.enabled is True
     assert response.retry_limit == 3
     assert response.created_at == datetime(2026, 10, 12, 12, 30, tzinfo=UTC)
-    assert response.model_dump(mode="json") == PAYLOAD
-    assert (
-        WebhookEndpointResponse.model_validate_json(response.model_dump_json())
-        == response
-    )
+    assert response.model_dump(mode="json") == response_payload
+    assert response_model.model_validate_json(response.model_dump_json()) == response
 
 
-def test_response_accepts_native_uuid_and_datetime_values() -> None:
+def test_response_accepts_native_uuid_and_datetime_values(
+    response_model: type[WebhookEndpointResponse],
+    response_payload: dict[str, object],
+) -> None:
     created_at = datetime(2026, 10, 12, tzinfo=UTC)
-    response = WebhookEndpointResponse.model_validate(
+    response = response_model.model_validate(
         {
-            **PAYLOAD,
-            "id": UUID(str(PAYLOAD["id"])),
-            "public_id": UUID(str(PAYLOAD["public_id"])),
+            **response_payload,
+            "id": UUID(str(response_payload["id"])),
+            "public_id": UUID(str(response_payload["public_id"])),
             "created_at": created_at,
         }
     )
@@ -52,19 +70,26 @@ def test_response_accepts_native_uuid_and_datetime_values() -> None:
 
 
 @pytest.mark.parametrize("name", ["a", "a" * 255, "  Webhook\t", "通知"])
-def test_response_accepts_and_trims_names(name: str) -> None:
-    response = WebhookEndpointResponse.model_validate({**PAYLOAD, "name": name})
+def test_response_accepts_and_trims_names(
+    response_model: type[WebhookEndpointResponse],
+    response_payload: dict[str, object],
+    name: str,
+) -> None:
+    response = response_model.model_validate({**response_payload, "name": name})
     assert response.name == name.strip()
 
 
 @pytest.mark.parametrize("enabled", [True, False])
 @pytest.mark.parametrize("retry_limit", [0, 3, 10])
 def test_response_preserves_enabled_and_retry_limit(
-    enabled: bool, retry_limit: int
+    response_model: type[WebhookEndpointResponse],
+    response_payload: dict[str, object],
+    enabled: bool,
+    retry_limit: int,
 ) -> None:
-    response = WebhookEndpointResponse.model_validate(
+    response = response_model.model_validate(
         {
-            **PAYLOAD,
+            **response_payload,
             "enabled": enabled,
             "retry_limit": retry_limit,
         }
@@ -80,27 +105,39 @@ def test_response_preserves_enabled_and_retry_limit(
         "https://example.com/" + "a" * (2048 - len("https://example.com/")),
     ],
 )
-def test_response_accepts_http_urls_and_maximum_length(url: str) -> None:
-    response = WebhookEndpointResponse.model_validate(
-        {**PAYLOAD, "destination_url": url}
+def test_response_accepts_http_urls_and_maximum_length(
+    response_model: type[WebhookEndpointResponse],
+    response_payload: dict[str, object],
+    url: str,
+) -> None:
+    response = response_model.model_validate(
+        {**response_payload, "destination_url": url}
     )
     assert str(response.destination_url) == url
 
 
 @pytest.mark.parametrize("field", list(PAYLOAD))
-def test_response_rejects_missing_required_fields(field: str) -> None:
+def test_response_rejects_missing_required_fields(
+    response_model: type[WebhookEndpointResponse],
+    response_payload: dict[str, object],
+    field: str,
+) -> None:
     with pytest.raises(ValidationError) as error:
-        WebhookEndpointResponse.model_validate(
-            {k: v for k, v in PAYLOAD.items() if k != field}
+        response_model.model_validate(
+            {k: v for k, v in response_payload.items() if k != field}
         )
     assert error.value.errors()[0]["loc"] == (field,)
     assert error.value.errors()[0]["type"] == "missing"
 
 
 @pytest.mark.parametrize("field", list(PAYLOAD))
-def test_response_rejects_null_fields(field: str) -> None:
+def test_response_rejects_null_fields(
+    response_model: type[WebhookEndpointResponse],
+    response_payload: dict[str, object],
+    field: str,
+) -> None:
     with pytest.raises(ValidationError) as error:
-        WebhookEndpointResponse.model_validate({**PAYLOAD, field: None})
+        response_model.model_validate({**response_payload, field: None})
     assert error.value.errors()[0]["loc"] == (field,)
 
 
@@ -127,9 +164,14 @@ def test_response_rejects_null_fields(field: str) -> None:
         ("created_at", "2026-02-30T00:00:00Z"),
     ],
 )
-def test_response_rejects_invalid_fields(field: str, value: object) -> None:
+def test_response_rejects_invalid_fields(
+    response_model: type[WebhookEndpointResponse],
+    response_payload: dict[str, object],
+    field: str,
+    value: object,
+) -> None:
     with pytest.raises(ValidationError) as error:
-        WebhookEndpointResponse.model_validate({**PAYLOAD, field: value})
+        response_model.model_validate({**response_payload, field: value})
     assert error.value.errors()[0]["loc"] == (field,)
 
 
@@ -143,11 +185,13 @@ def test_response_rejects_unexpected_fields(field: str) -> None:
 
 def test_create_response_preserves_secret_for_json_but_hides_it_in_repr() -> None:
     secret = "test-webhook-secret"
-    response = WebhookEndpointCreateResponse(secret=secret)
+    response = WebhookEndpointCreateResponse.model_validate(
+        {**PAYLOAD, "secret": secret}
+    )
     assert response.secret == secret
     assert secret not in repr(response)
     assert secret not in str(response)
-    assert response.model_dump() == {"secret": secret}
+    assert response.model_dump(mode="json") == {**PAYLOAD, "secret": secret}
     assert (
         WebhookEndpointCreateResponse.model_validate_json(
             response.model_dump_json()
@@ -158,7 +202,7 @@ def test_create_response_preserves_secret_for_json_but_hides_it_in_repr() -> Non
 
 def test_create_response_requires_secret() -> None:
     with pytest.raises(ValidationError) as error:
-        WebhookEndpointCreateResponse.model_validate({})
+        WebhookEndpointCreateResponse.model_validate(PAYLOAD)
     assert error.value.errors()[0]["loc"] == ("secret",)
     assert error.value.errors()[0]["type"] == "missing"
 
@@ -166,6 +210,31 @@ def test_create_response_requires_secret() -> None:
 @pytest.mark.parametrize("secret", [None, 123, True, [], {}])
 def test_create_response_rejects_non_string_secret(secret: object) -> None:
     with pytest.raises(ValidationError) as error:
-        WebhookEndpointCreateResponse.model_validate({"secret": secret})
+        WebhookEndpointCreateResponse.model_validate({**PAYLOAD, "secret": secret})
     assert error.value.errors()[0]["loc"] == ("secret",)
     assert error.value.errors()[0]["type"] == "string_type"
+
+
+@pytest.mark.parametrize(
+    "field", ["secret_ciphertext", "organization_id", "unexpected"]
+)
+def test_create_response_inherits_extra_field_rejection(field: str) -> None:
+    with pytest.raises(ValidationError) as error:
+        WebhookEndpointCreateResponse.model_validate(
+            {
+                **PAYLOAD,
+                "secret": "test-secret",
+                field: "unexpected",
+            }
+        )
+    assert error.value.errors()[0]["loc"] == (field,)
+    assert error.value.errors()[0]["type"] == "extra_forbidden"
+
+
+def test_create_response_rejects_secret_only_payload() -> None:
+    with pytest.raises(ValidationError) as error:
+        WebhookEndpointCreateResponse.model_validate({"secret": "test-secret"})
+    assert {item["loc"] for item in error.value.errors()} == {
+        (field,) for field in PAYLOAD
+    }
+    assert all(item["type"] == "missing" for item in error.value.errors())
