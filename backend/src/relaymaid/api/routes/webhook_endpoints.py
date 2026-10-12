@@ -1,7 +1,4 @@
-from typing import cast
-
 from fastapi import APIRouter, status
-from pydantic import HttpUrl
 
 from relaymaid.api.dependencies.auth import OwnerPrincipal
 from relaymaid.api.dependencies.database import DatabaseSession
@@ -43,7 +40,7 @@ async def create_endpoint(
             "id": result.endpoint.id,
             "public_id": result.endpoint.public_id,
             "name": result.endpoint.name,
-            "destination_url": cast(HttpUrl, result.endpoint.destination_url),
+            "destination_url": result.endpoint.destination_url,
             "enabled": result.endpoint.enabled,
             "retry_limit": result.endpoint.retry_limit,
             "created_at": result.endpoint.created_at,
