@@ -1,9 +1,17 @@
 from pathlib import Path
 
 import pytest
+from cryptography.fernet import Fernet
 from pydantic import ValidationError
 
 from relaymaid.config import Settings
+
+
+@pytest.fixture(autouse=True)
+def required_webhook_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(
+        "RELAYMAID_WEBHOOK_SECRET_ENCRYPTION_KEY", Fernet.generate_key().decode()
+    )
 
 
 def test_settings_use_relaymaid_environment_variables(
