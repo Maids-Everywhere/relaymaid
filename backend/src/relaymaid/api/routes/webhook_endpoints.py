@@ -38,13 +38,15 @@ async def create_endpoint(
         secret_manager=secret_manager,
     )
 
-    return WebhookEndpointCreateResponse(
-        id=result.endpoint.id,
-        public_id=result.endpoint.public_id,
-        name=result.endpoint.name,
-        destination_url=cast(HttpUrl, result.endpoint.destination_url),
-        enabled=result.endpoint.enabled,
-        retry_limit=result.endpoint.retry_limit,
-        created_at=result.endpoint.created_at,
-        secret=result.secret,
+    return WebhookEndpointCreateResponse.model_validate(
+        {
+            "id": result.endpoint.id,
+            "public_id": result.endpoint.public_id,
+            "name": result.endpoint.name,
+            "destination_url": cast(HttpUrl, result.endpoint.destination_url),
+            "enabled": result.endpoint.enabled,
+            "retry_limit": result.endpoint.retry_limit,
+            "created_at": result.endpoint.created_at,
+            "secret": result.secret,
+        }
     )
