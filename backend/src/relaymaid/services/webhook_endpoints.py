@@ -1,10 +1,16 @@
+from dataclasses import dataclass
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from relaymaid.db.models.webhook import WebhookEndpoint
-from relaymaid.domain import CreateWebhookEndpointResult
 from relaymaid.security.webhook_secrets import WebhookSecretManager
+
+
+@dataclass(frozen=True, slots=True)
+class CreateWebhookEndpointResult:
+    endpoint: WebhookEndpoint
+    secret: str
 
 
 async def create_webhook_endpoint(
@@ -18,6 +24,7 @@ async def create_webhook_endpoint(
 ) -> CreateWebhookEndpointResult:
     """
     Creates a new webhook endpoint for the specified organization.
+
     :param session: The database session to use for the operation.
     :param organization_id: The ID of the organization for which the webhook endpoint is
       being created.
@@ -29,7 +36,6 @@ async def create_webhook_endpoint(
       encrypting the webhook secret.
     :return: An instance of CreateWebhookEndpointResult containing the created
       WebhookEndpoint and the generated secret.
-    :raises ValueError: If any of the input parameters are invalid.
     """
     secret = secret_manager.generate_secret()
     encrypted_secret = secret_manager.encrypt(secret)

@@ -1,0 +1,222 @@
+from datetime import datetime
+from uuid import UUID
+
+import pytest
+from httpx import AsyncClient
+from sqlalchemy import func, select, update
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+import relaymaid.api.routes.webhook_endpoints as route_module
+from relaymaid.db.models import Membership
+from relaymaid.db.models.webhook import WebhookEndpoint
+from relaymaid.domain import MembershipRole
+from relaymaid.security.webhook_secrets import WebhookSecretManager
+
+pytestmark = [pytest.mark.integration, pytest.mark.anyio]
+PAYLOAD = {"name": "  Orders  ", "destination_url": "https://example.com/events"}
+
+
+async def register_owner(client: AsyncClient, email: str) -> dict[str, str]:
+    credentials = {"email": email, "password": "TestPassword12345"}
+    response = await client.post(
+        "/auth/register", json={**credentials, "organization_name": "Test"}
+    )
+    assert response.status_code == 201
+    registration = response.json()
+    response = await client.post("/auth/login", json=credentials)
+    assert response.status_code == 200
+    return {**registration, "token": response.json()["access_token"]}
+
+
+@pytest.fixture
+async def owner(client: AsyncClient) -> dict[str, str]:
+    return await register_owner(client, "webhook-owner@example.com")
+
+
+def authorization(owner: dict[str, str]) -> dict[str, str]:
+    return {"Authorization": f"Bearer {owner['token']}"}
+
+
+async def assert_no_endpoints(factory: async_sessionmaker[AsyncSession]) -> None:
+    async with factory() as session:
+        assert (
+            await session.scalar(select(func.count()).select_from(WebhookEndpoint)) == 0
+        )
+
+
+@pytest.mark.parametrize("retry_limit", [None, 0, 10])
+async def test_create_endpoint_returns_secret_and_persists_encrypted_record(
+    client: AsyncClient,
+    owner: dict[str, str],
+    session_factory: async_sessionmaker[AsyncSession],
+    webhook_secret_manager: WebhookSecretManager,
+    retry_limit: int | None,
+) -> None:
+    payload = dict(PAYLOAD)
+    if retry_limit is not None:
+        payload["retry_limit"] = retry_limit
+    response = await client.post(
+        "/webhook-endpoints", json=payload, headers=authorization(owner)
+    )
+    assert response.status_code == 201
+    body = response.json()
+    assert set(body) == {
+        "id",
+        "public_id",
+        "name",
+        "destination_url",
+        "enabled",
+        "retry_limit",
+        "created_at",
+        "secret",
+    }
+    assert body["name"] == "Orders"
+    assert body["destination_url"] == PAYLOAD["destination_url"]
+    assert body["enabled"] is True
+    assert body["retry_limit"] == (3 if retry_limit is None else retry_limit)
+    assert datetime.fromisoformat(body["created_at"]).tzinfo is not None
+    assert len(body["secret"]) == 43
+    async with session_factory() as session:
+        endpoint = await session.get(WebhookEndpoint, UUID(body["id"]))
+        assert endpoint is not None
+        assert endpoint.public_id == UUID(body["public_id"])
+        assert endpoint.organization_id == UUID(owner["organization_id"])
+        assert endpoint.name == body["name"]
+        assert endpoint.retry_limit == body["retry_limit"]
+        assert endpoint.secret_ciphertext != body["secret"]
+        assert (
+            webhook_secret_manager.decrypt(endpoint.secret_ciphertext) == body["secret"]
+        )
+
+
+@pytest.mark.parametrize("token", [None, "invalid-token"])
+async def test_create_requires_authentication(
+    client: AsyncClient,
+    session_factory: async_sessionmaker[AsyncSession],
+    token: str | None,
+) -> None:
+    headers = {} if token is None else {"Authorization": f"Bearer {token}"}
+    response = await client.post("/webhook-endpoints", json=PAYLOAD, headers=headers)
+    assert response.status_code == 401
+    assert response.headers["www-authenticate"] == "Bearer"
+    await assert_no_endpoints(session_factory)
+
+
+async def test_viewer_cannot_create_even_with_old_owner_token(
+    client: AsyncClient,
+    owner: dict[str, str],
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory.begin() as session:
+        await session.execute(
+            update(Membership)
+            .where(Membership.id == UUID(owner["membership_id"]))
+            .values(role=MembershipRole.VIEWER)
+        )
+    response = await client.post(
+        "/webhook-endpoints", json=PAYLOAD, headers=authorization(owner)
+    )
+    assert response.status_code == 403
+    assert response.json() == {
+        "detail": "You do not have permission to perform this action"
+    }
+    await assert_no_endpoints(session_factory)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("name", ""),
+        ("name", " \t"),
+        ("name", "a" * 256),
+        ("destination_url", "not-a-url"),
+        ("destination_url", "ftp://example.com"),
+        ("retry_limit", -1),
+        ("retry_limit", 11),
+        ("retry_limit", 1.5),
+        ("organization_id", "00000000-0000-0000-0000-000000000001"),
+        ("secret", "client-chosen-secret"),
+        ("enabled", False),
+    ],
+)
+async def test_invalid_payload_is_rejected_without_writes(
+    client: AsyncClient,
+    owner: dict[str, str],
+    session_factory: async_sessionmaker[AsyncSession],
+    field: str,
+    value: object,
+) -> None:
+    response = await client.post(
+        "/webhook-endpoints",
+        json={**PAYLOAD, field: value},
+        headers=authorization(owner),
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"][0]["loc"] == ["body", field]
+    await assert_no_endpoints(session_factory)
+
+
+@pytest.mark.parametrize("field", ["name", "destination_url"])
+async def test_missing_required_field_is_rejected(
+    client: AsyncClient,
+    owner: dict[str, str],
+    session_factory: async_sessionmaker[AsyncSession],
+    field: str,
+) -> None:
+    response = await client.post(
+        "/webhook-endpoints",
+        headers=authorization(owner),
+        json={key: value for key, value in PAYLOAD.items() if key != field},
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"][0]["type"] == "missing"
+    await assert_no_endpoints(session_factory)
+
+
+async def test_requests_assign_endpoints_to_authenticated_tenant(
+    client: AsyncClient,
+    owner: dict[str, str],
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    other = await register_owner(client, "other-webhook-owner@example.com")
+    responses = []
+    for principal in (owner, other, owner):
+        response = await client.post(
+            "/webhook-endpoints", json=PAYLOAD, headers=authorization(principal)
+        )
+        assert response.status_code == 201
+        body = response.json()
+        responses.append(body)
+        async with session_factory() as session:
+            endpoint = await session.get(WebhookEndpoint, UUID(body["id"]))
+            assert endpoint.organization_id == UUID(principal["organization_id"])
+    for field in ("id", "public_id", "secret"):
+        assert len({body[field] for body in responses}) == 3
+
+
+async def test_rls_rejects_foreign_tenant_write_and_rolls_back_request(
+    client: AsyncClient,
+    owner: dict[str, str],
+    session_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    other = await register_owner(client, "foreign-webhook-owner@example.com")
+    original = route_module.create_webhook_endpoint
+
+    async def wrong_tenant(**kwargs):
+        kwargs["organization_id"] = UUID(other["organization_id"])
+        return await original(**kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(route_module, "create_webhook_endpoint", wrong_tenant)
+        with pytest.raises(DBAPIError, match="row-level security policy") as error:
+            await client.post(
+                "/webhook-endpoints", json=PAYLOAD, headers=authorization(owner)
+            )
+        assert getattr(error.value.orig, "sqlstate", None) == "42501"
+    await assert_no_endpoints(session_factory)
+    response = await client.post(
+        "/webhook-endpoints", json=PAYLOAD, headers=authorization(owner)
+    )
+    assert response.status_code == 201

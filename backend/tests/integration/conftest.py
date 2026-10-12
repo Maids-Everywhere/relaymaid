@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 from alembic import command
 from alembic.config import Config
+from cryptography.fernet import Fernet
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import delete, text
 from sqlalchemy.ext.asyncio import (
@@ -15,9 +16,16 @@ from sqlalchemy.ext.asyncio import (
 from testcontainers.community.postgres import PostgresContainer
 
 from relaymaid.db.models import Membership, Organization, User
+from relaymaid.db.models.webhook import WebhookEndpoint
 from relaymaid.main import create_app
+from relaymaid.security.webhook_secrets import WebhookSecretManager
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
+
+
+@pytest.fixture
+def webhook_secret_manager() -> WebhookSecretManager:
+    return WebhookSecretManager(Fernet.generate_key().decode())
 
 
 @pytest.fixture(scope="session")
@@ -95,9 +103,11 @@ async def db_session(
 @pytest.fixture
 async def client(
     app_db_engine: AsyncEngine,
+    webhook_secret_manager: WebhookSecretManager,
     session_factory: async_sessionmaker[AsyncSession],
 ) -> AsyncIterator[AsyncClient]:
     app = create_app()
+    app.state.webhook_secret_manager = webhook_secret_manager
     app.state.db_engine = app_db_engine
     app.state.db_session_factory = async_sessionmaker(
         app_db_engine, expire_on_commit=False
@@ -108,6 +118,7 @@ async def client(
         yield client
 
     async with session_factory.begin() as session:
+        await session.execute(delete(WebhookEndpoint))
         await session.execute(delete(Membership))
         await session.execute(delete(User))
         await session.execute(delete(Organization))

@@ -2,6 +2,7 @@ from fastapi import FastAPI
 
 from relaymaid.api.routes.auth import router as auth_router
 from relaymaid.api.routes.health import router as health_router
+from relaymaid.api.routes.webhook_endpoints import router as webhook_endpoints_router
 from relaymaid.lifespan import lifespan
 
 
@@ -14,6 +15,7 @@ def create_app() -> FastAPI:
     )
     app.include_router(health_router)
     app.include_router(auth_router)
+    app.include_router(webhook_endpoints_router)
     return app
 
 
