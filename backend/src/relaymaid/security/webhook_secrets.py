@@ -1,6 +1,6 @@
 from secrets import token_urlsafe
 
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, InvalidToken
 
 
 class WebhookSecretDecryptionError(Exception):
@@ -23,7 +23,7 @@ class WebhookSecretManager:
     def decrypt(self, encrypted_secret: str) -> str:
         try:
             return self._fernet.decrypt(encrypted_secret.encode()).decode()
-        except Exception as e:
+        except (InvalidToken, UnicodeDecodeError) as e:
             raise WebhookSecretDecryptionError(
                 "Failed to decrypt the webhook secret."
             ) from e
