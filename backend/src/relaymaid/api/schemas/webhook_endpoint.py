@@ -1,4 +1,6 @@
+from datetime import datetime
 from typing import Annotated
+from uuid import UUID
 
 from pydantic import (
     BaseModel,
@@ -30,3 +32,19 @@ class WebhookEndpointCreateRequest(BaseModel):
     name: WebhookEndpointName
     destination_url: DestinationURL
     retry_limit: int = Field(default=3, ge=0, le=10)
+
+
+class WebhookEndpointResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    public_id: UUID
+    name: WebhookEndpointName
+    destination_url: DestinationURL
+    enabled: bool
+    retry_limit: int
+    created_at: datetime
+
+
+class WebhookEndpointCreateResponse(BaseModel):
+    secret: str = Field(repr=False)

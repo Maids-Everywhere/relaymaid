@@ -5,7 +5,11 @@ from .auth import (
     RegisterRequest,
     RegisterResponse,
 )
-from .webhook_endpoint import WebhookEndpointCreateRequest
+from .webhook_endpoint import (
+    WebhookEndpointCreateRequest,
+    WebhookEndpointCreateResponse,
+    WebhookEndpointResponse,
+)
 
 __all__ = [
     "CurrentUserResponse",
@@ -14,4 +18,6 @@ __all__ = [
     "RegisterRequest",
     "RegisterResponse",
     "WebhookEndpointCreateRequest",
+    "WebhookEndpointCreateResponse",
+    "WebhookEndpointResponse",
 ]

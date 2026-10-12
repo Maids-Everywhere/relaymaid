@@ -26,7 +26,7 @@ def upgrade() -> None:
         sa.Column("id", sa.Uuid(), nullable=False),
         sa.Column("organization_id", sa.Uuid(), nullable=False),
         sa.Column("public_id", sa.Uuid(), nullable=False),
-        sa.Column("name", sa.String(length=200), nullable=False),
+        sa.Column("name", sa.String(length=255), nullable=False),
         sa.Column("secret_ciphertext", sa.Text(), nullable=False),
         sa.Column("destination_url", sa.String(length=2048), nullable=False),
         sa.Column("enabled", sa.Boolean(), nullable=False, server_default=sa.true()),

@@ -52,7 +52,7 @@ class WebhookEndpoint(Base):
         default=uuid4,
     )
     name: Mapped[str] = mapped_column(
-        String(200),
+        String(255),
         nullable=False,
     )
     secret_ciphertext: Mapped[str] = mapped_column(
