@@ -51,6 +51,7 @@ jobs:
       RELAYMAID_MIGRATOR_PASSWORD: ci_migrator_password
       RELAYMAID_REDIS_URL: redis://localhost:6379/0
       JWT_SECRET_TOKEN: ${{ secrets.JWT_SECRET_TOKEN }}
+      RELAYMAID_WEBHOOK_SECRET_ENCRYPTION_KEY: ${{ secrets.RELAYMAID_WEBHOOK_SECRET_ENCRYPTION_KEY }}
     defaults:
       run:
         working-directory: backend

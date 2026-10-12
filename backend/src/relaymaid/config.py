@@ -3,7 +3,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -33,6 +33,8 @@ class Settings(BaseSettings):
             "jwt_secret_token",
         ),
     )
+
+    webhook_secret_encryption_key: SecretStr
 
 
 class MigrationSettings(BaseSettings):
