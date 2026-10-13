@@ -4,12 +4,14 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from relaymaid.db.models.webhook import WebhookEndpoint
 from relaymaid.security.webhook_secrets import WebhookSecretManager
 from relaymaid.services.exceptions import WebhookEndpointNotFoundError
 from relaymaid.services.webhook_endpoints import (
     create_webhook_endpoint,
     get_webhook_endpoint_by_id,
     list_webhook_endpoints,
+    update_webhook_endpoint_by_id,
 )
 
 pytestmark = pytest.mark.anyio
@@ -162,9 +164,6 @@ async def test_lookup_propagates_database_failure_without_committing() -> None:
     ],
 )
 async def test_update_changes_only_supplied_fields_without_committing(changes) -> None:
-    from relaymaid.db.models.webhook import WebhookEndpoint
-    from relaymaid.services.webhook_endpoints import update_webhook_endpoint_by_id
-
     session = MagicMock(spec=AsyncSession)
     endpoint = WebhookEndpoint(
         id=uuid4(),

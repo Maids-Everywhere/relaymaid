@@ -150,7 +150,7 @@ async def update_webhook_endpoint_by_id(
       (optional).
     :param retry_limit: The new retry limit for the webhook endpoint (optional).
     :param enabled: The new enabled status for the webhook endpoint (optional).
-    :return: The updated WebhookEndpoint instance if found, otherwise raise.
+    :return: The updated WebhookEndpoint instance if found.
     :raises WebhookEndpointNotFoundError: If the endpoint is unavailable to the
       organization.
     """
