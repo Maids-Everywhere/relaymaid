@@ -126,3 +126,49 @@ async def get_webhook_endpoint_by_id(
         raise WebhookEndpointNotFoundError
 
     return result
+
+
+async def update_webhook_endpoint_by_id(
+    session: AsyncSession,
+    *,
+    organization_id: UUID,
+    endpoint_id: UUID,
+    name: str | None = None,
+    destination_url: str | None = None,
+    retry_limit: int | None = None,
+    enabled: bool | None = None,
+) -> WebhookEndpoint:
+    """
+    Updates a webhook endpoint by its ID for the specified organization.
+
+    :param session: The database session to use for the operation.
+    :param organization_id: The ID of the organization to which the webhook endpoint
+      belongs.
+    :param endpoint_id: The ID of the webhook endpoint to update.
+    :param name: The new name for the webhook endpoint (optional).
+    :param destination_url: The new destination URL for the webhook endpoint
+      (optional).
+    :param retry_limit: The new retry limit for the webhook endpoint (optional).
+    :param enabled: The new enabled status for the webhook endpoint (optional).
+    :return: The updated WebhookEndpoint instance if found.
+    :raises WebhookEndpointNotFoundError: If the endpoint is unavailable to the
+      organization.
+    """
+    endpoint = await get_webhook_endpoint_by_id(
+        session=session,
+        organization_id=organization_id,
+        endpoint_id=endpoint_id,
+    )
+
+    if name is not None:
+        endpoint.name = name
+    if destination_url is not None:
+        endpoint.destination_url = destination_url
+    if retry_limit is not None:
+        endpoint.retry_limit = retry_limit
+    if enabled is not None:
+        endpoint.enabled = enabled
+
+    await session.flush()
+
+    return endpoint

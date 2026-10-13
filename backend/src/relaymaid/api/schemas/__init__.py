@@ -10,6 +10,7 @@ from .webhook_endpoint import (
     WebhookEndpointCreateResponse,
     WebhookEndpointListResponse,
     WebhookEndpointResponse,
+    WebhookEndpointUpdateRequest,
 )
 
 __all__ = [
@@ -22,4 +23,5 @@ __all__ = [
     "WebhookEndpointCreateResponse",
     "WebhookEndpointListResponse",
     "WebhookEndpointResponse",
+    "WebhookEndpointUpdateRequest",
 ]

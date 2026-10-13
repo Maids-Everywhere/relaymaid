@@ -508,3 +508,176 @@ async def test_get_endpoint_returns_fixed_404_detail(
     assert service.await_args.kwargs["organization_id"] == UUID(
         owner["organization_id"]
     )
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"name": "  Updated  "},
+        {"destination_url": "https://example.com/new"},
+        {"retry_limit": 0},
+        {"enabled": False},
+        {
+            "name": "Updated",
+            "destination_url": "https://example.com/new",
+            "retry_limit": 10,
+            "enabled": False,
+        },
+    ],
+)
+async def test_patch_persists_only_supplied_fields_and_preserves_secret(
+    client: AsyncClient,
+    owner: dict[str, str],
+    session_factory: async_sessionmaker[AsyncSession],
+    changes,
+) -> None:
+    response = await client.post(
+        "/webhook-endpoints", json=PAYLOAD, headers=authorization(owner)
+    )
+    assert response.status_code == 201
+    created = response.json()
+    endpoint_id = UUID(created["id"])
+    async with session_factory() as session:
+        original = await session.get(WebhookEndpoint, endpoint_id)
+        ciphertext = original.secret_ciphertext
+    expected = {key: value for key, value in created.items() if key != "secret"}
+    expected.update(changes)
+    expected["name"] = expected["name"].strip()
+    response = await client.patch(
+        f"/webhook-endpoints/{endpoint_id}", json=changes, headers=authorization(owner)
+    )
+    assert response.status_code == 200
+    assert response.json() == expected
+    response = await client.get(
+        f"/webhook-endpoints/{endpoint_id}", headers=authorization(owner)
+    )
+    assert response.status_code == 200
+    assert response.json() == expected
+    async with session_factory() as session:
+        persisted = await session.get(WebhookEndpoint, endpoint_id)
+        assert persisted.secret_ciphertext == ciphertext
+        assert persisted.organization_id == UUID(owner["organization_id"])
+
+
+@pytest.mark.parametrize("token", [None, "invalid-token"])
+async def test_patch_requires_authentication(
+    client: AsyncClient, token: str | None
+) -> None:
+    headers = {} if token is None else {"Authorization": f"Bearer {token}"}
+    response = await client.patch(
+        f"/webhook-endpoints/{uuid4()}", json={"name": "Updated"}, headers=headers
+    )
+    assert response.status_code == 401
+    assert response.headers["www-authenticate"] == "Bearer"
+
+
+async def test_viewer_cannot_patch_existing_endpoint(
+    client: AsyncClient,
+    owner: dict[str, str],
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    response = await client.post(
+        "/webhook-endpoints", json=PAYLOAD, headers=authorization(owner)
+    )
+    assert response.status_code == 201
+    created = response.json()
+    async with session_factory.begin() as session:
+        await session.execute(
+            update(Membership)
+            .where(Membership.id == UUID(owner["membership_id"]))
+            .values(role=MembershipRole.VIEWER)
+        )
+    response = await client.patch(
+        f"/webhook-endpoints/{created['id']}",
+        json={"name": "Updated"},
+        headers=authorization(owner),
+    )
+    assert response.status_code == 403
+    async with session_factory() as session:
+        endpoint = await session.get(WebhookEndpoint, UUID(created["id"]))
+        assert endpoint.name == created["name"]
+
+
+@pytest.mark.parametrize("lookup", ["missing", "public_id", "foreign_tenant"])
+async def test_patch_returns_404_without_changing_unavailable_endpoint(
+    client: AsyncClient,
+    owner: dict[str, str],
+    session_factory: async_sessionmaker[AsyncSession],
+    lookup: str,
+) -> None:
+    endpoint_id = str(uuid4())
+    created = None
+    if lookup != "missing":
+        principal = (
+            owner
+            if lookup == "public_id"
+            else await register_owner(client, "patch-other-owner@example.com")
+        )
+        response = await client.post(
+            "/webhook-endpoints", json=PAYLOAD, headers=authorization(principal)
+        )
+        assert response.status_code == 201
+        created = response.json()
+        endpoint_id = created["public_id" if lookup == "public_id" else "id"]
+    response = await client.patch(
+        f"/webhook-endpoints/{endpoint_id}",
+        json={"name": "Updated"},
+        headers=authorization(owner),
+    )
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Webhook endpoint not found."}
+    if created:
+        async with session_factory() as session:
+            endpoint = await session.get(WebhookEndpoint, UUID(created["id"]))
+            assert endpoint.name == created["name"]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {"name": None},
+        {"destination_url": None},
+        {"retry_limit": None},
+        {"enabled": None},
+        {"name": " "},
+        {"destination_url": "invalid"},
+        {"retry_limit": -1},
+        {"retry_limit": 11},
+        {"secret": "chosen"},
+    ],
+)
+async def test_patch_rejects_invalid_payload_before_update(
+    client: AsyncClient,
+    owner: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    payload,
+) -> None:
+    from unittest.mock import AsyncMock
+
+    service = AsyncMock()
+    monkeypatch.setattr(route_module, "update_webhook_endpoint_by_id", service)
+    response = await client.patch(
+        f"/webhook-endpoints/{uuid4()}", json=payload, headers=authorization(owner)
+    )
+    assert response.status_code == 422
+    service.assert_not_awaited()
+
+
+async def test_patch_rejects_invalid_endpoint_id_before_update(
+    client: AsyncClient,
+    owner: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from unittest.mock import AsyncMock
+
+    service = AsyncMock()
+    monkeypatch.setattr(route_module, "update_webhook_endpoint_by_id", service)
+    response = await client.patch(
+        "/webhook-endpoints/not-a-uuid",
+        json={"name": "Updated"},
+        headers=authorization(owner),
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"][0]["loc"] == ["path", "endpoint_id"]
+    service.assert_not_awaited()
