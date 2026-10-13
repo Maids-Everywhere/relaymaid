@@ -5,7 +5,10 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from relaymaid.security.webhook_secrets import WebhookSecretManager
-from relaymaid.services.webhook_endpoints import create_webhook_endpoint
+from relaymaid.services.webhook_endpoints import (
+    create_webhook_endpoint,
+    list_webhook_endpoints,
+)
 
 pytestmark = pytest.mark.anyio
 
@@ -65,3 +68,35 @@ async def test_creation_propagates_failures_without_committing(stage: str) -> No
         session.flush.assert_not_awaited()
     if stage == "generate_secret":
         manager.encrypt.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "count, has_more", [(0, False), (1, False), (2, False), (3, True)]
+)
+async def test_listing_returns_page_and_detects_more_results(
+    count: int, has_more: bool
+) -> None:
+    session = MagicMock(spec=AsyncSession)
+    endpoints = [MagicMock() for _ in range(count)]
+    query_result = MagicMock()
+    query_result.scalars.return_value = iter(endpoints)
+    session.execute.return_value = query_result
+    result = await list_webhook_endpoints(
+        session, organization_id=uuid4(), limit=2, offset=1
+    )
+    assert result.items == tuple(endpoints[:2])
+    assert result.has_more is has_more
+    session.execute.assert_awaited_once()
+    session.commit.assert_not_awaited()
+    session.flush.assert_not_awaited()
+
+
+async def test_listing_propagates_database_failure_without_committing() -> None:
+    session = MagicMock(spec=AsyncSession)
+    failure = RuntimeError("database unavailable")
+    session.execute.side_effect = failure
+    with pytest.raises(RuntimeError, match="database unavailable") as error:
+        await list_webhook_endpoints(session, organization_id=uuid4())
+    assert error.value is failure
+    session.commit.assert_not_awaited()
+    session.rollback.assert_not_awaited()
