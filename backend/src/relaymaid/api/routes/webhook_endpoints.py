@@ -1,6 +1,7 @@
 from typing import Annotated
+from uuid import UUID
 
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, HTTPException, Query, status
 
 from relaymaid.api.dependencies.auth import CurrentPrincipal, OwnerPrincipal
 from relaymaid.api.dependencies.database import DatabaseSession
@@ -11,8 +12,10 @@ from relaymaid.api.schemas import (
     WebhookEndpointListResponse,
     WebhookEndpointResponse,
 )
+from relaymaid.services.exceptions import WebhookEndpointNotFoundError
 from relaymaid.services.webhook_endpoints import (
     create_webhook_endpoint,
+    get_webhook_endpoint_by_id,
     list_webhook_endpoints,
 )
 
@@ -83,3 +86,28 @@ async def list_endpoints(
         offset=offset,
         has_more=result.has_more,
     )
+
+
+@router.get(
+    "/{endpoint_id}",
+    response_model=WebhookEndpointResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def get_webhook_endpoint(
+    endpoint_id: UUID,
+    session: DatabaseSession,
+    principal: CurrentPrincipal,
+) -> WebhookEndpointResponse:
+    try:
+        endpoint = await get_webhook_endpoint_by_id(
+            session=session,
+            organization_id=principal.organization_id,
+            endpoint_id=endpoint_id,
+        )
+    except WebhookEndpointNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Webhook endpoint not found.",
+        ) from e
+
+    return WebhookEndpointResponse.model_validate(endpoint)
