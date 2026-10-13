@@ -114,20 +114,18 @@ async def test_lookup_returns_endpoint_or_raises_not_found_without_writes(
     query_result.scalar_one_or_none.return_value = endpoint
     session.execute.return_value = query_result
     organization_id = uuid4()
-    public_id = uuid4()
+    endpoint_id = uuid4()
     if found:
         result = await get_webhook_endpoint_by_public_id(
-            session, organization_id=organization_id, public_id=public_id
+            session, organization_id=organization_id, endpoint_id=endpoint_id
         )
         assert result is endpoint
     else:
         with pytest.raises(WebhookEndpointNotFoundError) as error:
             await get_webhook_endpoint_by_public_id(
-                session, organization_id=organization_id, public_id=public_id
+                session, organization_id=organization_id, endpoint_id=endpoint_id
             )
-        assert str(error.value) == (
-            f"Webhook endpoint with public ID {public_id} not found."
-        )
+        assert str(error.value) == "Webhook endpoint not found."
     session.execute.assert_awaited_once()
     query_result.scalar_one_or_none.assert_called_once_with()
     session.add.assert_not_called()
@@ -141,7 +139,7 @@ async def test_lookup_propagates_database_failure_without_committing() -> None:
     session.execute.side_effect = failure
     with pytest.raises(RuntimeError, match="database unavailable") as error:
         await get_webhook_endpoint_by_public_id(
-            session, organization_id=uuid4(), public_id=uuid4()
+            session, organization_id=uuid4(), endpoint_id=uuid4()
         )
     assert error.value is failure
     session.commit.assert_not_awaited()

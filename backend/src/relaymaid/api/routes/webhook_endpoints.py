@@ -89,12 +89,12 @@ async def list_endpoints(
 
 
 @router.get(
-    "/{public_id}",
+    "/{endpoint_id}",
     response_model=WebhookEndpointResponse,
     status_code=status.HTTP_200_OK,
 )
-async def get_endpoint(
-    public_id: UUID,
+async def get_webhook_endpoint(
+    endpoint_id: UUID,
     session: DatabaseSession,
     principal: CurrentPrincipal,
 ) -> WebhookEndpointResponse:
@@ -102,19 +102,12 @@ async def get_endpoint(
         endpoint = await get_webhook_endpoint_by_public_id(
             session=session,
             organization_id=principal.organization_id,
-            public_id=public_id,
+            endpoint_id=endpoint_id,
         )
     except WebhookEndpointNotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(e),
         ) from e
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=(
-                "An unexpected error occurred while retrieving the "
-                "webhook endpoint."
-            ),
-        ) from e
+
     return WebhookEndpointResponse.model_validate(endpoint)

@@ -370,7 +370,7 @@ async def test_list_accepts_pagination_boundaries(
 
 
 @pytest.mark.parametrize("role", [MembershipRole.OWNER, MembershipRole.VIEWER])
-async def test_get_endpoint_by_public_id_returns_public_fields(
+async def test_get_endpoint_by_internal_id_returns_public_fields(
     client: AsyncClient,
     owner: dict[str, str],
     session_factory: async_sessionmaker[AsyncSession],
@@ -393,7 +393,7 @@ async def test_get_endpoint_by_public_id_returns_public_fields(
             .values(enabled=False, retry_limit=0)
         )
     response = await client.get(
-        f"/webhook-endpoints/{created['public_id']}", headers=authorization(owner)
+        f"/webhook-endpoints/{created['id']}", headers=authorization(owner)
     )
     assert response.status_code == 200
     expected = {key: value for key, value in created.items() if key != "secret"}
@@ -411,32 +411,32 @@ async def test_get_endpoint_requires_authentication(
     assert response.headers["www-authenticate"] == "Bearer"
 
 
-@pytest.mark.parametrize("public_id", ["not-a-uuid", "123", "null"])
-async def test_get_endpoint_rejects_invalid_public_id_before_lookup(
+@pytest.mark.parametrize("endpoint_id", ["not-a-uuid", "123", "null"])
+async def test_get_endpoint_rejects_invalid_endpoint_id_before_lookup(
     client: AsyncClient,
     owner: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
-    public_id: str,
+    endpoint_id: str,
 ) -> None:
     from unittest.mock import AsyncMock
 
     service = AsyncMock()
     monkeypatch.setattr(route_module, "get_webhook_endpoint_by_public_id", service)
     response = await client.get(
-        f"/webhook-endpoints/{public_id}", headers=authorization(owner)
+        f"/webhook-endpoints/{endpoint_id}", headers=authorization(owner)
     )
     assert response.status_code == 422
-    assert response.json()["detail"][0]["loc"] == ["path", "public_id"]
+    assert response.json()["detail"][0]["loc"] == ["path", "endpoint_id"]
     service.assert_not_awaited()
 
 
-@pytest.mark.parametrize("lookup", ["missing", "internal_id", "foreign_tenant"])
-async def test_get_endpoint_returns_404_for_unavailable_public_id(
+@pytest.mark.parametrize("lookup", ["missing", "public_id", "foreign_tenant"])
+async def test_get_endpoint_returns_404_for_unavailable_endpoint_id(
     client: AsyncClient,
     owner: dict[str, str],
     lookup: str,
 ) -> None:
-    public_id = str(uuid4())
+    endpoint_id = str(uuid4())
     if lookup != "missing":
         principal = owner
         if lookup == "foreign_tenant":
@@ -445,15 +445,36 @@ async def test_get_endpoint_returns_404_for_unavailable_public_id(
             "/webhook-endpoints", json=PAYLOAD, headers=authorization(principal)
         )
         assert response.status_code == 201
-        field = "id" if lookup == "internal_id" else "public_id"
-        public_id = response.json()[field]
+        field = "public_id" if lookup == "public_id" else "id"
+        endpoint_id = response.json()[field]
     response = await client.get(
-        f"/webhook-endpoints/{public_id}", headers=authorization(owner)
+        f"/webhook-endpoints/{endpoint_id}", headers=authorization(owner)
     )
     assert response.status_code == 404
-    assert response.json() == {
-        "detail": f"Webhook endpoint with public ID {public_id} not found."
-    }
+    assert response.json() == {"detail": "Webhook endpoint not found."}
     # A failed lookup must leave the next authenticated request usable.
     response = await client.get("/webhook-endpoints", headers=authorization(owner))
     assert response.status_code == 200
+
+
+async def test_get_endpoint_propagates_unexpected_service_errors(
+    client: AsyncClient,
+    owner: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from unittest.mock import AsyncMock
+
+    endpoint_id = uuid4()
+    failure = RuntimeError("database unavailable")
+    service = AsyncMock(side_effect=failure)
+    monkeypatch.setattr(route_module, "get_webhook_endpoint_by_public_id", service)
+    with pytest.raises(RuntimeError, match="database unavailable") as error:
+        await client.get(
+            f"/webhook-endpoints/{endpoint_id}", headers=authorization(owner)
+        )
+    assert error.value is failure
+    service.assert_awaited_once()
+    assert service.await_args.kwargs["endpoint_id"] == endpoint_id
+    assert service.await_args.kwargs["organization_id"] == UUID(
+        owner["organization_id"]
+    )
