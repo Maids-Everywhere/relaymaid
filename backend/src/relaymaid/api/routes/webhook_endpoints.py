@@ -15,7 +15,7 @@ from relaymaid.api.schemas import (
 from relaymaid.services.exceptions import WebhookEndpointNotFoundError
 from relaymaid.services.webhook_endpoints import (
     create_webhook_endpoint,
-    get_webhook_endpoint_by_public_id,
+    get_webhook_endpoint_by_id,
     list_webhook_endpoints,
 )
 
@@ -99,7 +99,7 @@ async def get_webhook_endpoint(
     principal: CurrentPrincipal,
 ) -> WebhookEndpointResponse:
     try:
-        endpoint = await get_webhook_endpoint_by_public_id(
+        endpoint = await get_webhook_endpoint_by_id(
             session=session,
             organization_id=principal.organization_id,
             endpoint_id=endpoint_id,
@@ -107,7 +107,7 @@ async def get_webhook_endpoint(
     except WebhookEndpointNotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(e),
+            detail="Webhook endpoint not found.",
         ) from e
 
     return WebhookEndpointResponse.model_validate(endpoint)

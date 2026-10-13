@@ -96,12 +96,12 @@ async def list_webhook_endpoints(
     )
 
 
-async def get_webhook_endpoint_by_public_id(
+async def get_webhook_endpoint_by_id(
     session: AsyncSession,
     *,
     organization_id: UUID,
     endpoint_id: UUID,
-) -> WebhookEndpoint | None:
+) -> WebhookEndpoint:
     """
     Retrieves a webhook endpoint by its ID for the specified organization.
 
@@ -109,7 +109,9 @@ async def get_webhook_endpoint_by_public_id(
     :param organization_id: The ID of the organization to which the webhook endpoint
       belongs.
     :param endpoint_id: The ID of the webhook endpoint to retrieve.
-    :return: The WebhookEndpoint instance if found, otherwise None.
+    :return: The WebhookEndpoint instance if found, otherwise raise.
+    :raises WebhookEndpointNotFoundError: If the endpoint is unavailable to the
+    organization.
     """
     query = await session.execute(
         select(WebhookEndpoint).where(
@@ -121,6 +123,6 @@ async def get_webhook_endpoint_by_public_id(
     result = query.scalar_one_or_none()
 
     if result is None:
-        raise WebhookEndpointNotFoundError("Webhook endpoint not found.")
+        raise WebhookEndpointNotFoundError
 
     return result

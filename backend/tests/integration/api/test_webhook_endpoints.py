@@ -12,6 +12,7 @@ from relaymaid.db.models import Membership
 from relaymaid.db.models.webhook import WebhookEndpoint
 from relaymaid.domain import MembershipRole
 from relaymaid.security.webhook_secrets import WebhookSecretManager
+from relaymaid.services.exceptions import WebhookEndpointNotFoundError
 
 pytestmark = [pytest.mark.integration, pytest.mark.anyio]
 PAYLOAD = {"name": "  Orders  ", "destination_url": "https://example.com/events"}
@@ -421,7 +422,7 @@ async def test_get_endpoint_rejects_invalid_endpoint_id_before_lookup(
     from unittest.mock import AsyncMock
 
     service = AsyncMock()
-    monkeypatch.setattr(route_module, "get_webhook_endpoint_by_public_id", service)
+    monkeypatch.setattr(route_module, "get_webhook_endpoint_by_id", service)
     response = await client.get(
         f"/webhook-endpoints/{endpoint_id}", headers=authorization(owner)
     )
@@ -467,12 +468,41 @@ async def test_get_endpoint_propagates_unexpected_service_errors(
     endpoint_id = uuid4()
     failure = RuntimeError("database unavailable")
     service = AsyncMock(side_effect=failure)
-    monkeypatch.setattr(route_module, "get_webhook_endpoint_by_public_id", service)
+    monkeypatch.setattr(route_module, "get_webhook_endpoint_by_id", service)
     with pytest.raises(RuntimeError, match="database unavailable") as error:
         await client.get(
             f"/webhook-endpoints/{endpoint_id}", headers=authorization(owner)
         )
     assert error.value is failure
+    service.assert_awaited_once()
+    assert service.await_args.kwargs["endpoint_id"] == endpoint_id
+    assert service.await_args.kwargs["organization_id"] == UUID(
+        owner["organization_id"]
+    )
+
+
+@pytest.mark.parametrize("message", [None, "Internal tenant and database details"])
+async def test_get_endpoint_returns_fixed_404_detail(
+    client: AsyncClient,
+    owner: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    message: str | None,
+) -> None:
+    from unittest.mock import AsyncMock
+
+    failure = (
+        WebhookEndpointNotFoundError()
+        if message is None
+        else WebhookEndpointNotFoundError(message)
+    )
+    service = AsyncMock(side_effect=failure)
+    monkeypatch.setattr(route_module, "get_webhook_endpoint_by_id", service)
+    endpoint_id = uuid4()
+    response = await client.get(
+        f"/webhook-endpoints/{endpoint_id}", headers=authorization(owner)
+    )
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Webhook endpoint not found."}
     service.assert_awaited_once()
     assert service.await_args.kwargs["endpoint_id"] == endpoint_id
     assert service.await_args.kwargs["organization_id"] == UUID(

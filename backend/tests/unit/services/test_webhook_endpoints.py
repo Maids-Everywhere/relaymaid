@@ -8,7 +8,7 @@ from relaymaid.security.webhook_secrets import WebhookSecretManager
 from relaymaid.services.exceptions import WebhookEndpointNotFoundError
 from relaymaid.services.webhook_endpoints import (
     create_webhook_endpoint,
-    get_webhook_endpoint_by_public_id,
+    get_webhook_endpoint_by_id,
     list_webhook_endpoints,
 )
 
@@ -116,16 +116,16 @@ async def test_lookup_returns_endpoint_or_raises_not_found_without_writes(
     organization_id = uuid4()
     endpoint_id = uuid4()
     if found:
-        result = await get_webhook_endpoint_by_public_id(
+        result = await get_webhook_endpoint_by_id(
             session, organization_id=organization_id, endpoint_id=endpoint_id
         )
         assert result is endpoint
     else:
         with pytest.raises(WebhookEndpointNotFoundError) as error:
-            await get_webhook_endpoint_by_public_id(
+            await get_webhook_endpoint_by_id(
                 session, organization_id=organization_id, endpoint_id=endpoint_id
             )
-        assert str(error.value) == "Webhook endpoint not found."
+        assert error.value.args == ()
     session.execute.assert_awaited_once()
     query_result.scalar_one_or_none.assert_called_once_with()
     session.add.assert_not_called()
@@ -138,7 +138,7 @@ async def test_lookup_propagates_database_failure_without_committing() -> None:
     failure = RuntimeError("database unavailable")
     session.execute.side_effect = failure
     with pytest.raises(RuntimeError, match="database unavailable") as error:
-        await get_webhook_endpoint_by_public_id(
+        await get_webhook_endpoint_by_id(
             session, organization_id=uuid4(), endpoint_id=uuid4()
         )
     assert error.value is failure
