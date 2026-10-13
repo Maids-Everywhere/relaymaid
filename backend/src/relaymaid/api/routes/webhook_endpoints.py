@@ -1,4 +1,6 @@
-from fastapi import APIRouter, status
+from typing import Annotated
+
+from fastapi import APIRouter, Query, status
 
 from relaymaid.api.dependencies.auth import OwnerPrincipal
 from relaymaid.api.dependencies.database import DatabaseSession
@@ -6,8 +8,13 @@ from relaymaid.api.dependencies.webhook_secrets import WebhookSecretManagerDepen
 from relaymaid.api.schemas import (
     WebhookEndpointCreateRequest,
     WebhookEndpointCreateResponse,
+    WebhookEndpointListResponse,
+    WebhookEndpointResponse,
 )
-from relaymaid.services.webhook_endpoints import create_webhook_endpoint
+from relaymaid.services.webhook_endpoints import (
+    create_webhook_endpoint,
+    list_webhook_endpoints,
+)
 
 router = APIRouter(
     prefix="/webhook-endpoints",
@@ -47,3 +54,33 @@ async def create_endpoint(
             "secret": result.secret,
         }
     )
+
+
+@router.get(
+    "",
+    response_model=WebhookEndpointListResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def list_endpoints(
+    session: DatabaseSession,
+    principal: OwnerPrincipal,
+    limit: Annotated[int, Query(ge=1, le=100)] = 10,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> WebhookEndpointListResponse:
+    result = await list_webhook_endpoints(
+        session=session,
+        organization_id=principal.organization_id,
+        limit=limit,
+        offset=offset,
+    )
+
+    return WebhookEndpointListResponse(
+        items=[
+            WebhookEndpointResponse.model_validate(endpoint)
+            for endpoint in result.items
+        ],
+        limit=limit,
+        offset=offset,
+        has_more=result.has_more,
+    )
+    

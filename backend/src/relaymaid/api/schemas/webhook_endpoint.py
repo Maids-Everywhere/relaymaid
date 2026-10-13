@@ -35,7 +35,7 @@ class WebhookEndpointCreateRequest(BaseModel):
 
 
 class WebhookEndpointResponse(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", from_attributes=True)
 
     id: UUID
     public_id: UUID
@@ -48,3 +48,12 @@ class WebhookEndpointResponse(BaseModel):
 
 class WebhookEndpointCreateResponse(WebhookEndpointResponse):
     secret: str = Field(repr=False)
+
+
+class WebhookEndpointListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[WebhookEndpointResponse]
+    limit: int
+    offset: int
+    has_more: bool

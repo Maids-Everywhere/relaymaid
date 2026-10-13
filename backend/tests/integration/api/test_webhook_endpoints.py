@@ -220,3 +220,138 @@ async def test_rls_rejects_foreign_tenant_write_and_rolls_back_request(
         "/webhook-endpoints", json=PAYLOAD, headers=authorization(owner)
     )
     assert response.status_code == 201
+
+
+async def test_list_empty_endpoints_uses_default_pagination(
+    client: AsyncClient, owner: dict[str, str]
+) -> None:
+    response = await client.get("/webhook-endpoints", headers=authorization(owner))
+    assert response.status_code == 200
+    assert response.json() == {"items": [], "limit": 10, "offset": 0, "has_more": False}
+
+
+async def test_list_paginates_in_stable_order_and_excludes_other_tenants_and_secrets(
+    client: AsyncClient,
+    owner: dict[str, str],
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    other = await register_owner(client, "list-other-owner@example.com")
+    endpoints = []
+    for principal in (owner, other, owner, owner):
+        response = await client.post(
+            "/webhook-endpoints", json=PAYLOAD, headers=authorization(principal)
+        )
+        assert response.status_code == 201
+        if principal == owner:
+            endpoints.append(response.json())
+    # Equal timestamps exercise the UUID tie-breaker in the database query.
+    async with session_factory.begin() as session:
+        await session.execute(
+            update(WebhookEndpoint)
+            .where(WebhookEndpoint.organization_id == UUID(owner["organization_id"]))
+            .values(created_at=datetime.fromisoformat(endpoints[0]["created_at"]))
+        )
+    expected = sorted(endpoints, key=lambda item: UUID(item["id"]), reverse=True)
+    for offset, has_more in ((0, True), (2, False), (3, False)):
+        response = await client.get(
+            "/webhook-endpoints",
+            params={"limit": 2, "offset": offset},
+            headers=authorization(owner),
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["limit"] == 2
+        assert body["offset"] == offset
+        assert body["has_more"] is has_more
+        assert [item["id"] for item in body["items"]] == [
+            item["id"] for item in expected[offset : offset + 2]
+        ]
+        for item in body["items"]:
+            assert set(item) == {
+                "id",
+                "public_id",
+                "name",
+                "destination_url",
+                "enabled",
+                "retry_limit",
+                "created_at",
+            }
+            assert item["name"] == "Orders"
+            assert item["destination_url"] == PAYLOAD["destination_url"]
+
+
+@pytest.mark.parametrize("token", [None, "invalid-token"])
+async def test_list_requires_authentication(
+    client: AsyncClient, token: str | None
+) -> None:
+    headers = {} if token is None else {"Authorization": f"Bearer {token}"}
+    response = await client.get("/webhook-endpoints", headers=headers)
+    assert response.status_code == 401
+    assert response.headers["www-authenticate"] == "Bearer"
+
+
+async def test_viewer_cannot_list_even_with_old_owner_token(
+    client: AsyncClient,
+    owner: dict[str, str],
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory.begin() as session:
+        await session.execute(
+            update(Membership)
+            .where(Membership.id == UUID(owner["membership_id"]))
+            .values(role=MembershipRole.VIEWER)
+        )
+    response = await client.get("/webhook-endpoints", headers=authorization(owner))
+    assert response.status_code == 403
+    assert response.json() == {
+        "detail": "You do not have permission to perform this action"
+    }
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("limit", "0"),
+        ("limit", "101"),
+        ("limit", "1.5"),
+        ("limit", "invalid"),
+        ("offset", "-1"),
+        ("offset", "1.5"),
+        ("offset", "invalid"),
+    ],
+)
+async def test_list_rejects_invalid_pagination(
+    client: AsyncClient,
+    owner: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    value: str,
+) -> None:
+    from unittest.mock import AsyncMock
+
+    service = AsyncMock()
+    monkeypatch.setattr(route_module, "list_webhook_endpoints", service)
+    response = await client.get(
+        "/webhook-endpoints", params={field: value}, headers=authorization(owner)
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"][0]["loc"] == ["query", field]
+    service.assert_not_awaited()
+
+
+@pytest.mark.parametrize("limit", [1, 100])
+async def test_list_accepts_pagination_boundaries(
+    client: AsyncClient, owner: dict[str, str], limit: int
+) -> None:
+    response = await client.get(
+        "/webhook-endpoints",
+        params={"limit": limit, "offset": 0},
+        headers=authorization(owner),
+    )
+    assert response.status_code == 200
+    assert response.json() == {
+        "items": [],
+        "limit": limit,
+        "offset": 0,
+        "has_more": False,
+    }
