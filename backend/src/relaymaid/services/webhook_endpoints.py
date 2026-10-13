@@ -13,6 +13,7 @@ class CreateWebhookEndpointResult:
     endpoint: WebhookEndpoint
     secret: str
 
+
 @dataclass(frozen=True, slots=True)
 class ListWebhookEndpointsResult:
     items: tuple[WebhookEndpoint, ...]
@@ -79,14 +80,11 @@ async def list_webhook_endpoints(
     :return: A list of WebhookEndpoint instances.
     """
     result = await session.execute(
-        select(
-          WebhookEndpoint
-        ).where(
-            WebhookEndpoint.organization_id == organization_id
-        ).order_by(
-            WebhookEndpoint.created_at.desc(),
-            WebhookEndpoint.id.desc()
-        ).limit(limit + 1).offset(offset)
+        select(WebhookEndpoint)
+        .where(WebhookEndpoint.organization_id == organization_id)
+        .order_by(WebhookEndpoint.created_at.desc(), WebhookEndpoint.id.desc())
+        .limit(limit + 1)
+        .offset(offset)
     )
 
     endpoints = list(result.scalars())

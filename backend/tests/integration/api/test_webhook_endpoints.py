@@ -290,11 +290,19 @@ async def test_list_requires_authentication(
     assert response.headers["www-authenticate"] == "Bearer"
 
 
-async def test_viewer_cannot_list_even_with_old_owner_token(
+async def test_viewer_can_list_own_tenant_endpoints_with_existing_token(
     client: AsyncClient,
     owner: dict[str, str],
     session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
+    other = await register_owner(client, "viewer-other-owner@example.com")
+    created = []
+    for principal in (owner, other):
+        response = await client.post(
+            "/webhook-endpoints", json=PAYLOAD, headers=authorization(principal)
+        )
+        assert response.status_code == 201
+        created.append(response.json())
     async with session_factory.begin() as session:
         await session.execute(
             update(Membership)
@@ -302,9 +310,13 @@ async def test_viewer_cannot_list_even_with_old_owner_token(
             .values(role=MembershipRole.VIEWER)
         )
     response = await client.get("/webhook-endpoints", headers=authorization(owner))
-    assert response.status_code == 403
+    assert response.status_code == 200
+    expected = {key: value for key, value in created[0].items() if key != "secret"}
     assert response.json() == {
-        "detail": "You do not have permission to perform this action"
+        "items": [expected],
+        "limit": 10,
+        "offset": 0,
+        "has_more": False,
     }
 
 

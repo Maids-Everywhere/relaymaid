@@ -2,7 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Query, status
 
-from relaymaid.api.dependencies.auth import OwnerPrincipal
+from relaymaid.api.dependencies.auth import CurrentPrincipal, OwnerPrincipal
 from relaymaid.api.dependencies.database import DatabaseSession
 from relaymaid.api.dependencies.webhook_secrets import WebhookSecretManagerDependency
 from relaymaid.api.schemas import (
@@ -63,7 +63,7 @@ async def create_endpoint(
 )
 async def list_endpoints(
     session: DatabaseSession,
-    principal: OwnerPrincipal,
+    principal: CurrentPrincipal,
     limit: Annotated[int, Query(ge=1, le=100)] = 10,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> WebhookEndpointListResponse:
@@ -83,4 +83,3 @@ async def list_endpoints(
         offset=offset,
         has_more=result.has_more,
     )
-    
