@@ -77,7 +77,7 @@ async def list_webhook_endpoints(
     :param limit: The maximum number of webhook endpoints to return.
     :param offset: The number of webhook endpoints to skip before starting to collect
       the result set.
-    :return: A list of WebhookEndpoint instances.
+    :return: Paginated webhook endpoint listing result.
     """
     result = await session.execute(
         select(WebhookEndpoint)
