@@ -12,7 +12,6 @@ from relaymaid.db.models import Membership
 from relaymaid.db.models.webhook import WebhookEndpoint
 from relaymaid.domain import MembershipRole
 from relaymaid.security.webhook_secrets import WebhookSecretManager
-from relaymaid.services.exceptions import WebhookEndpointNotFoundError
 
 pytestmark = [pytest.mark.integration, pytest.mark.anyio]
 PAYLOAD = {"name": "  Orders  ", "destination_url": "https://example.com/events"}
@@ -432,7 +431,7 @@ async def test_get_endpoint_rejects_invalid_public_id_before_lookup(
 
 
 @pytest.mark.parametrize("lookup", ["missing", "internal_id", "foreign_tenant"])
-async def test_get_endpoint_raises_not_found_for_unavailable_public_id(
+async def test_get_endpoint_returns_404_for_unavailable_public_id(
     client: AsyncClient,
     owner: dict[str, str],
     lookup: str,
@@ -448,13 +447,13 @@ async def test_get_endpoint_raises_not_found_for_unavailable_public_id(
         assert response.status_code == 201
         field = "id" if lookup == "internal_id" else "public_id"
         public_id = response.json()[field]
-    with pytest.raises(WebhookEndpointNotFoundError) as error:
-        await client.get(
-            f"/webhook-endpoints/{public_id}", headers=authorization(owner)
-        )
-    assert str(error.value) == (
-        f"Webhook endpoint with public ID {public_id} not found."
+    response = await client.get(
+        f"/webhook-endpoints/{public_id}", headers=authorization(owner)
     )
+    assert response.status_code == 404
+    assert response.json() == {
+        "detail": f"Webhook endpoint with public ID {public_id} not found."
+    }
     # A failed lookup must leave the next authenticated request usable.
     response = await client.get("/webhook-endpoints", headers=authorization(owner))
     assert response.status_code == 200

@@ -5,6 +5,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from relaymaid.security.webhook_secrets import WebhookSecretManager
+from relaymaid.services.exceptions import WebhookEndpointNotFoundError
 from relaymaid.services.webhook_endpoints import (
     create_webhook_endpoint,
     get_webhook_endpoint_by_public_id,
@@ -104,16 +105,29 @@ async def test_listing_propagates_database_failure_without_committing() -> None:
 
 
 @pytest.mark.parametrize("found", [False, True])
-async def test_lookup_returns_endpoint_or_none_without_writes(found: bool) -> None:
+async def test_lookup_returns_endpoint_or_raises_not_found_without_writes(
+    found: bool,
+) -> None:
     session = MagicMock(spec=AsyncSession)
     query_result = MagicMock()
     endpoint = MagicMock() if found else None
     query_result.scalar_one_or_none.return_value = endpoint
     session.execute.return_value = query_result
-    result = await get_webhook_endpoint_by_public_id(
-        session, organization_id=uuid4(), public_id=uuid4()
-    )
-    assert result is endpoint
+    organization_id = uuid4()
+    public_id = uuid4()
+    if found:
+        result = await get_webhook_endpoint_by_public_id(
+            session, organization_id=organization_id, public_id=public_id
+        )
+        assert result is endpoint
+    else:
+        with pytest.raises(WebhookEndpointNotFoundError) as error:
+            await get_webhook_endpoint_by_public_id(
+                session, organization_id=organization_id, public_id=public_id
+            )
+        assert str(error.value) == (
+            f"Webhook endpoint with public ID {public_id} not found."
+        )
     session.execute.assert_awaited_once()
     query_result.scalar_one_or_none.assert_called_once_with()
     session.add.assert_not_called()

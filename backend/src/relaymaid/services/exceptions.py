@@ -7,4 +7,7 @@ class InvalidCredentialsError(Exception):
 
 
 class WebhookEndpointNotFoundError(Exception):
-    """Raised when a webhook endpoint is not found in the database."""
+    """
+    Raised when a webhook endpoint is not found in the database or is not accessible to
+    the user.
+    """

@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from relaymaid.db.models.webhook import WebhookEndpoint
 from relaymaid.security.webhook_secrets import WebhookSecretManager
+from relaymaid.services.exceptions import WebhookEndpointNotFoundError
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,11 +111,18 @@ async def get_webhook_endpoint_by_public_id(
     :param public_id: The public ID of the webhook endpoint to retrieve.
     :return: The WebhookEndpoint instance if found, otherwise None.
     """
-    result = await session.execute(
+    query = await session.execute(
         select(WebhookEndpoint).where(
             WebhookEndpoint.organization_id == organization_id,
             WebhookEndpoint.public_id == public_id,
         )
     )
 
-    return result.scalar_one_or_none()
+    result = query.scalar_one_or_none()
+
+    if result is None:
+        raise WebhookEndpointNotFoundError(
+            f"Webhook endpoint with public ID {public_id} not found."
+        )
+
+    return result
