@@ -93,3 +93,28 @@ async def list_webhook_endpoints(
         items=tuple(endpoints[:limit]),
         has_more=len(endpoints) > limit,
     )
+
+
+async def get_webhook_endpoint_by_public_id(
+    session: AsyncSession,
+    *,
+    organization_id: UUID,
+    public_id: UUID,
+) -> WebhookEndpoint | None:
+    """
+    Retrieves a webhook endpoint by its public ID for the specified organization.
+
+    :param session: The database session to use for the operation.
+    :param organization_id: The ID of the organization to which the webhook endpoint
+      belongs.
+    :param public_id: The public ID of the webhook endpoint to retrieve.
+    :return: The WebhookEndpoint instance if found, otherwise None.
+    """
+    result = await session.execute(
+        select(WebhookEndpoint).where(
+            WebhookEndpoint.organization_id == organization_id,
+            WebhookEndpoint.public_id == public_id,
+        )
+    )
+
+    return result.scalar_one_or_none()

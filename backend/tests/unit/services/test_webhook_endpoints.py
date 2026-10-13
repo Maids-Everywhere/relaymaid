@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from relaymaid.security.webhook_secrets import WebhookSecretManager
 from relaymaid.services.webhook_endpoints import (
     create_webhook_endpoint,
+    get_webhook_endpoint_by_public_id,
     list_webhook_endpoints,
 )
 
@@ -97,6 +98,37 @@ async def test_listing_propagates_database_failure_without_committing() -> None:
     session.execute.side_effect = failure
     with pytest.raises(RuntimeError, match="database unavailable") as error:
         await list_webhook_endpoints(session, organization_id=uuid4())
+    assert error.value is failure
+    session.commit.assert_not_awaited()
+    session.rollback.assert_not_awaited()
+
+
+@pytest.mark.parametrize("found", [False, True])
+async def test_lookup_returns_endpoint_or_none_without_writes(found: bool) -> None:
+    session = MagicMock(spec=AsyncSession)
+    query_result = MagicMock()
+    endpoint = MagicMock() if found else None
+    query_result.scalar_one_or_none.return_value = endpoint
+    session.execute.return_value = query_result
+    result = await get_webhook_endpoint_by_public_id(
+        session, organization_id=uuid4(), public_id=uuid4()
+    )
+    assert result is endpoint
+    session.execute.assert_awaited_once()
+    query_result.scalar_one_or_none.assert_called_once_with()
+    session.add.assert_not_called()
+    session.flush.assert_not_awaited()
+    session.commit.assert_not_awaited()
+
+
+async def test_lookup_propagates_database_failure_without_committing() -> None:
+    session = MagicMock(spec=AsyncSession)
+    failure = RuntimeError("database unavailable")
+    session.execute.side_effect = failure
+    with pytest.raises(RuntimeError, match="database unavailable") as error:
+        await get_webhook_endpoint_by_public_id(
+            session, organization_id=uuid4(), public_id=uuid4()
+        )
     assert error.value is failure
     session.commit.assert_not_awaited()
     session.rollback.assert_not_awaited()

@@ -4,3 +4,7 @@ class EmailAlreadyExistsError(Exception):
 
 class InvalidCredentialsError(Exception):
     """Raised when supplied credentials cannot authenticate a user."""
+
+
+class WebhookEndpointNotFoundError(Exception):
+    """Raised when a webhook endpoint is not found in the database."""

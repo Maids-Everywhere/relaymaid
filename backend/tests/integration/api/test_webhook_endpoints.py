@@ -1,5 +1,5 @@
 from datetime import datetime
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from httpx import AsyncClient
@@ -12,6 +12,7 @@ from relaymaid.db.models import Membership
 from relaymaid.db.models.webhook import WebhookEndpoint
 from relaymaid.domain import MembershipRole
 from relaymaid.security.webhook_secrets import WebhookSecretManager
+from relaymaid.services.exceptions import WebhookEndpointNotFoundError
 
 pytestmark = [pytest.mark.integration, pytest.mark.anyio]
 PAYLOAD = {"name": "  Orders  ", "destination_url": "https://example.com/events"}
@@ -367,3 +368,93 @@ async def test_list_accepts_pagination_boundaries(
         "offset": 0,
         "has_more": False,
     }
+
+
+@pytest.mark.parametrize("role", [MembershipRole.OWNER, MembershipRole.VIEWER])
+async def test_get_endpoint_by_public_id_returns_public_fields(
+    client: AsyncClient,
+    owner: dict[str, str],
+    session_factory: async_sessionmaker[AsyncSession],
+    role: MembershipRole,
+) -> None:
+    response = await client.post(
+        "/webhook-endpoints", json=PAYLOAD, headers=authorization(owner)
+    )
+    assert response.status_code == 201
+    created = response.json()
+    async with session_factory.begin() as session:
+        await session.execute(
+            update(Membership)
+            .where(Membership.id == UUID(owner["membership_id"]))
+            .values(role=role)
+        )
+        await session.execute(
+            update(WebhookEndpoint)
+            .where(WebhookEndpoint.id == UUID(created["id"]))
+            .values(enabled=False, retry_limit=0)
+        )
+    response = await client.get(
+        f"/webhook-endpoints/{created['public_id']}", headers=authorization(owner)
+    )
+    assert response.status_code == 200
+    expected = {key: value for key, value in created.items() if key != "secret"}
+    expected.update(enabled=False, retry_limit=0)
+    assert response.json() == expected
+
+
+@pytest.mark.parametrize("token", [None, "invalid-token"])
+async def test_get_endpoint_requires_authentication(
+    client: AsyncClient, token: str | None
+) -> None:
+    headers = {} if token is None else {"Authorization": f"Bearer {token}"}
+    response = await client.get(f"/webhook-endpoints/{uuid4()}", headers=headers)
+    assert response.status_code == 401
+    assert response.headers["www-authenticate"] == "Bearer"
+
+
+@pytest.mark.parametrize("public_id", ["not-a-uuid", "123", "null"])
+async def test_get_endpoint_rejects_invalid_public_id_before_lookup(
+    client: AsyncClient,
+    owner: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    public_id: str,
+) -> None:
+    from unittest.mock import AsyncMock
+
+    service = AsyncMock()
+    monkeypatch.setattr(route_module, "get_webhook_endpoint_by_public_id", service)
+    response = await client.get(
+        f"/webhook-endpoints/{public_id}", headers=authorization(owner)
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"][0]["loc"] == ["path", "public_id"]
+    service.assert_not_awaited()
+
+
+@pytest.mark.parametrize("lookup", ["missing", "internal_id", "foreign_tenant"])
+async def test_get_endpoint_raises_not_found_for_unavailable_public_id(
+    client: AsyncClient,
+    owner: dict[str, str],
+    lookup: str,
+) -> None:
+    public_id = str(uuid4())
+    if lookup != "missing":
+        principal = owner
+        if lookup == "foreign_tenant":
+            principal = await register_owner(client, "lookup-other-owner@example.com")
+        response = await client.post(
+            "/webhook-endpoints", json=PAYLOAD, headers=authorization(principal)
+        )
+        assert response.status_code == 201
+        field = "id" if lookup == "internal_id" else "public_id"
+        public_id = response.json()[field]
+    with pytest.raises(WebhookEndpointNotFoundError) as error:
+        await client.get(
+            f"/webhook-endpoints/{public_id}", headers=authorization(owner)
+        )
+    assert str(error.value) == (
+        f"Webhook endpoint with public ID {public_id} not found."
+    )
+    # A failed lookup must leave the next authenticated request usable.
+    response = await client.get("/webhook-endpoints", headers=authorization(owner))
+    assert response.status_code == 200
