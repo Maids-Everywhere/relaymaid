@@ -11,12 +11,14 @@ from relaymaid.api.schemas import (
     WebhookEndpointCreateResponse,
     WebhookEndpointListResponse,
     WebhookEndpointResponse,
+    WebhookEndpointUpdateRequest,
 )
 from relaymaid.services.exceptions import WebhookEndpointNotFoundError
 from relaymaid.services.webhook_endpoints import (
     create_webhook_endpoint,
     get_webhook_endpoint_by_id,
     list_webhook_endpoints,
+    update_webhook_endpoint_by_id,
 )
 
 router = APIRouter(
@@ -111,3 +113,35 @@ async def get_webhook_endpoint(
         ) from e
 
     return WebhookEndpointResponse.model_validate(endpoint)
+
+
+@router.patch(
+    "/{endpoint_id}",
+    response_model=WebhookEndpointResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def update_webhook_endpoint(
+    endpoint_id: UUID,
+    data: WebhookEndpointUpdateRequest,
+    session: DatabaseSession,
+    principal: OwnerPrincipal,
+) -> WebhookEndpointResponse:
+    try:
+        updated_endpoint = await update_webhook_endpoint_by_id(
+            session=session,
+            organization_id=principal.organization_id,
+            endpoint_id=endpoint_id,
+            name=data.name,
+            destination_url=(
+                str(data.destination_url) if data.destination_url is not None else None
+            ),
+            retry_limit=data.retry_limit,
+            enabled=data.enabled,
+        )
+    except WebhookEndpointNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Webhook endpoint not found.",
+        ) from e
+
+    return WebhookEndpointResponse.model_validate(updated_endpoint)

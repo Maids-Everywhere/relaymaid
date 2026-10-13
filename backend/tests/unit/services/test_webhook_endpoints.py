@@ -144,3 +144,89 @@ async def test_lookup_propagates_database_failure_without_committing() -> None:
     assert error.value is failure
     session.commit.assert_not_awaited()
     session.rollback.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"name": "Updated"},
+        {"destination_url": "https://example.com/new"},
+        {"retry_limit": 0},
+        {"enabled": False},
+        {
+            "name": "Updated",
+            "destination_url": "https://example.com/new",
+            "retry_limit": 10,
+            "enabled": True,
+        },
+    ],
+)
+async def test_update_changes_only_supplied_fields_without_committing(changes) -> None:
+    from relaymaid.db.models.webhook import WebhookEndpoint
+    from relaymaid.services.webhook_endpoints import update_webhook_endpoint_by_id
+
+    session = MagicMock(spec=AsyncSession)
+    endpoint = WebhookEndpoint(
+        id=uuid4(),
+        public_id=uuid4(),
+        organization_id=uuid4(),
+        name="Original",
+        destination_url="https://example.com/original",
+        retry_limit=3,
+        enabled=False,
+        secret_ciphertext="encrypted-secret",
+    )
+    query_result = MagicMock()
+    query_result.scalar_one_or_none.return_value = endpoint
+    session.execute.return_value = query_result
+    original = {
+        field: getattr(endpoint, field)
+        for field in (
+            "name",
+            "destination_url",
+            "retry_limit",
+            "enabled",
+            "id",
+            "public_id",
+            "organization_id",
+            "secret_ciphertext",
+        )
+    }
+    result = await update_webhook_endpoint_by_id(
+        session,
+        organization_id=endpoint.organization_id,
+        endpoint_id=endpoint.id,
+        **changes,
+    )
+    assert result is endpoint
+    for field, value in original.items():
+        assert getattr(endpoint, field) == changes.get(field, value)
+    session.flush.assert_awaited_once_with()
+    session.commit.assert_not_awaited()
+    session.rollback.assert_not_awaited()
+
+
+@pytest.mark.parametrize("stage", ["missing", "execute", "flush"])
+async def test_update_propagates_failures_without_committing(stage: str) -> None:
+    from relaymaid.services.webhook_endpoints import update_webhook_endpoint_by_id
+
+    session = MagicMock(spec=AsyncSession)
+    query_result = MagicMock()
+    query_result.scalar_one_or_none.return_value = (
+        None if stage == "missing" else MagicMock()
+    )
+    session.execute.return_value = query_result
+    failure = RuntimeError("database unavailable")
+    if stage != "missing":
+        getattr(session, stage).side_effect = failure
+    expected = WebhookEndpointNotFoundError if stage == "missing" else RuntimeError
+    with pytest.raises(expected) as error:
+        await update_webhook_endpoint_by_id(
+            session, organization_id=uuid4(), endpoint_id=uuid4(), name="Updated"
+        )
+    if stage != "missing":
+        assert error.value is failure
+    if stage != "flush":
+        session.flush.assert_not_awaited()
+    session.commit.assert_not_awaited()
+    session.rollback.assert_not_awaited()

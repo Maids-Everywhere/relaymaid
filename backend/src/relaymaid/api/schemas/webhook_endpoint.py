@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Self
 from uuid import UUID
 
 from pydantic import (
@@ -9,6 +9,8 @@ from pydantic import (
     HttpUrl,
     StringConstraints,
     UrlConstraints,
+    field_validator,
+    model_validator,
 )
 
 WebhookEndpointName = Annotated[
@@ -57,3 +59,30 @@ class WebhookEndpointListResponse(BaseModel):
     limit: int
     offset: int
     has_more: bool
+
+
+class WebhookEndpointUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: WebhookEndpointName | None = None
+    destination_url: DestinationURL | None = None
+    retry_limit: int | None = Field(default=None, ge=0, le=10)
+    enabled: bool | None = None
+
+    @field_validator(
+        "name",
+        "destination_url",
+        "retry_limit",
+        "enabled",
+    )
+    @classmethod
+    def reject_explicit_null(cls, value: object) -> object:
+        if value is None:
+            raise ValueError("Field cannot be null")
+        return value
+
+    @model_validator(mode="after")
+    def require_at_least_one_field(self) -> Self:
+        if not self.model_fields_set:
+            raise ValueError("At least one field must be provided")
+        return self
