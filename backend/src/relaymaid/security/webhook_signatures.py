@@ -31,7 +31,7 @@ def verify_webhook_signature(
     now_timestamp: int | None = None,
     tolerance_seconds: int = DEFAULT_TIMESTAMP_TOLERANCE_SECONDS,
 ) -> None:
-    if not timestamp.isdigit() or len(timestamp) > 20:
+    if not timestamp.isascii() or not timestamp.isdigit() or len(timestamp) > 20:
         raise InvalidWebhookTimestampError
 
     timestamp_value = int(timestamp)

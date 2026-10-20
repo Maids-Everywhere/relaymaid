@@ -62,6 +62,13 @@ def upgrade() -> None:
         """
     )
 
+    op.execute(
+        """
+        REVOKE ALL ON FUNCTION public.relaymaid_resolve_webhook_endpoint(uuid) 
+        FROM PUBLIC;
+        """
+    )
+
 
 def downgrade() -> None:
     """Downgrade schema."""
@@ -72,6 +79,7 @@ def downgrade() -> None:
     )
     op.execute(
         """
-        DROP POLICY IF EXISTS webhook_endpoints_resolver_owner_select ON webhook_endpoints
+        DROP POLICY IF EXISTS webhook_endpoints_resolver_owner_select 
+        ON webhook_endpoints
         """
     )

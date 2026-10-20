@@ -62,6 +62,18 @@ async def webhooks(db_session: AsyncSession) -> WebhookData:
     await db_session.execute(
         text("ALTER TABLE webhook_endpoints OWNER TO relaymaid_migrator")
     )
+    await db_session.execute(
+        text(
+            "ALTER FUNCTION public.relaymaid_resolve_webhook_endpoint(uuid) "
+            "OWNER TO relaymaid_migrator"
+        )
+    )
+    await db_session.execute(
+        text(
+            "GRANT EXECUTE ON FUNCTION "
+            "public.relaymaid_resolve_webhook_endpoint(uuid) TO relaymaid_app"
+        )
+    )
     await db_session.execute(text("SET LOCAL ROLE relaymaid_app"))
     await assert_role(db_session, "relaymaid_app")
     return data
@@ -85,6 +97,28 @@ async def assert_role(session: AsyncSession, expected_role: str) -> None:
             )
         )
         == "relaymaid_migrator"
+    )
+
+    resolver_owner = (
+        await session.execute(
+            text(
+                "SELECT owner.rolname, owner.rolsuper, owner.rolbypassrls, "
+                "resolver.prosecdef FROM pg_proc AS resolver "
+                "JOIN pg_roles AS owner ON owner.oid = resolver.proowner "
+                "WHERE resolver.oid = "
+                "'public.relaymaid_resolve_webhook_endpoint(uuid)'::regprocedure"
+            )
+        )
+    ).one()
+    assert resolver_owner == ("relaymaid_migrator", False, False, True)
+    assert (
+        await session.scalar(
+            text(
+                "SELECT relrowsecurity AND relforcerowsecurity FROM pg_class "
+                "WHERE oid = 'public.webhook_endpoints'::regclass"
+            )
+        )
+        is True
     )
 
 
@@ -398,3 +432,25 @@ async def test_table_owner_can_read_enabled_endpoints_but_cannot_write_other_ten
         )
         == []
     )
+
+
+async def test_resolver_requires_owner_select_policy(
+    db_session: AsyncSession, webhooks: WebhookData
+) -> None:
+    savepoint = await db_session.begin_nested()
+    try:
+        await db_session.execute(text("SET LOCAL ROLE relaymaid_migrator"))
+        await db_session.execute(
+            text(
+                "DROP POLICY webhook_endpoints_resolver_owner_select "
+                "ON webhook_endpoints"
+            )
+        )
+        await db_session.execute(text("SET LOCAL ROLE relaymaid_app"))
+        rows = await db_session.execute(
+            text("SELECT * FROM public.relaymaid_resolve_webhook_endpoint(:public_id)"),
+            {"public_id": webhooks.public_ids[0]},
+        )
+        assert list(rows) == []
+    finally:
+        await savepoint.rollback()
