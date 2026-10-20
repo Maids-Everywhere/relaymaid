@@ -3,6 +3,7 @@ from typing import Annotated, Self
 from uuid import UUID
 
 from pydantic import (
+    AfterValidator,
     BaseModel,
     ConfigDict,
     Field,
@@ -12,6 +13,8 @@ from pydantic import (
     field_validator,
     model_validator,
 )
+
+from relaymaid.security.destination_urls import validate_destination_url
 
 WebhookEndpointName = Annotated[
     str,
@@ -27,12 +30,17 @@ DestinationURL = Annotated[
     UrlConstraints(max_length=2048),
 ]
 
+SafeDestinationURL = Annotated[
+    DestinationURL,
+    AfterValidator(validate_destination_url),
+]
+
 
 class WebhookEndpointCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: WebhookEndpointName
-    destination_url: DestinationURL
+    destination_url: SafeDestinationURL
     retry_limit: int = Field(default=3, ge=0, le=10)
 
 
@@ -65,7 +73,7 @@ class WebhookEndpointUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: WebhookEndpointName | None = None
-    destination_url: DestinationURL | None = None
+    destination_url: SafeDestinationURL | None = None
     retry_limit: int | None = Field(default=None, ge=0, le=10)
     enabled: bool | None = None
 

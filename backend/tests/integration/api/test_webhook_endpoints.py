@@ -802,3 +802,56 @@ async def test_delete_rejects_invalid_endpoint_id_before_service(
     assert response.status_code == 422
     assert response.json()["detail"][0]["loc"] == ["path", "endpoint_id"]
     service.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    ("operation", "destination_url"),
+    [
+        ("create", "http://169.254.169.254/latest/meta-data"),
+        ("update", "http://127.0.0.1/events"),
+    ],
+)
+async def test_unsafe_destination_is_rejected_without_database_changes(
+    client: AsyncClient,
+    owner: dict[str, str],
+    session_factory: async_sessionmaker[AsyncSession],
+    operation: str,
+    destination_url: str,
+) -> None:
+    if operation == "create":
+        response = await client.post(
+            "/webhook-endpoints",
+            json={**PAYLOAD, "destination_url": destination_url},
+            headers=authorization(owner),
+        )
+    else:
+        created = await client.post(
+            "/webhook-endpoints", json=PAYLOAD, headers=authorization(owner)
+        )
+        assert created.status_code == 201
+        endpoint_id = UUID(created.json()["id"])
+        async with session_factory() as session:
+            endpoint = await session.get(WebhookEndpoint, endpoint_id)
+            before = {
+                column.name: getattr(endpoint, column.name)
+                for column in WebhookEndpoint.__table__.columns
+            }
+        response = await client.patch(
+            f"/webhook-endpoints/{endpoint_id}",
+            json={"name": "Should not change", "destination_url": destination_url},
+            headers=authorization(owner),
+        )
+    assert response.status_code == 422
+    detail = response.json()["detail"][0]
+    assert detail["loc"] == ["body", "destination_url"]
+    assert detail["type"] == "value_error"
+    if operation == "create":
+        await assert_no_endpoints(session_factory)
+    else:
+        async with session_factory() as session:
+            endpoint = await session.get(WebhookEndpoint, endpoint_id)
+            assert endpoint is not None
+            assert {
+                column.name: getattr(endpoint, column.name)
+                for column in WebhookEndpoint.__table__.columns
+            } == before
