@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+from unittest.mock import Mock
 
 import pytest
 
@@ -112,3 +113,38 @@ def test_signature_binds_body_secret_and_timestamp(tamper: str) -> None:
             signature=sign(timestamp),
             now_timestamp=NOW,
         )
+
+
+@pytest.mark.parametrize(
+    "signature",
+    [
+        pytest.param("v1=", id="empty-digest"),
+        pytest.param("v1=" + "a" * 63, id="short-digest"),
+        pytest.param("v1=" + "a" * 65, id="long-digest"),
+        pytest.param("v1=" + "A" * 64, id="uppercase-hex"),
+        pytest.param("v1=" + "g" * 64, id="non-hex-characters"),
+        pytest.param("v1=" + "é" * 64, id="non-ascii-characters"),
+        pytest.param("v1=" + "a" * 64 + "\n", id="trailing-newline"),
+        pytest.param("v1=" + "a" * 64 + " ", id="trailing-space"),
+        pytest.param("v1= " + "a" * 64, id="leading-digest-space"),
+        pytest.param("v1=" + "a" * 32 + "\n" + "a" * 31, id="embedded-newline"),
+    ],
+)
+def test_rejects_invalid_signature_format_before_digest_comparison(
+    signature: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    compare = Mock(
+        side_effect=AssertionError("Malformed signatures must be rejected first")
+    )
+    monkeypatch.setattr(
+        "relaymaid.security.webhook_signatures.hmac.compare_digest", compare
+    )
+    with pytest.raises(InvalidWebhookSignatureError):
+        verify_webhook_signature(
+            secret=SECRET,
+            timestamp=str(NOW),
+            raw_body=BODY,
+            signature=signature,
+            now_timestamp=NOW,
+        )
+    compare.assert_not_called()

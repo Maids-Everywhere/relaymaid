@@ -1,7 +1,9 @@
 import hashlib
 import hmac
+import re
 import time
 
+_SIGNATURE_PATTERN = re.compile(r"v1=[0-9a-f]{64}\Z")
 DEFAULT_TIMESTAMP_TOLERANCE_SECONDS = 300
 SIGNATURE_PREFIX = "v1="
 
@@ -41,6 +43,9 @@ def verify_webhook_signature(
         raise WebhookTimestampOutsideToleranceError
 
     if not signature.startswith(SIGNATURE_PREFIX):
+        raise InvalidWebhookSignatureError
+
+    if _SIGNATURE_PATTERN.fullmatch(signature) is None:
         raise InvalidWebhookSignatureError
 
     signed_payload = timestamp.encode("ascii") + b"." + raw_body

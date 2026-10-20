@@ -73,4 +73,18 @@ ALTER DEFAULT PRIVILEGES
     GRANT USAGE, SELECT
     ON SEQUENCES
     TO :"app_user";
+
+ALTER DEFAULT PRIVILEGES
+    FOR ROLE :"migrator_user"
+    IN SCHEMA public
+    REVOKE EXECUTE
+    ON FUNCTIONS
+    FROM PUBLIC;
+
+ALTER DEFAULT PRIVILEGES
+    FOR ROLE :"migrator_user"
+    IN SCHEMA public
+    GRANT EXECUTE
+    ON FUNCTIONS
+    TO :"app_user";
 SQL
