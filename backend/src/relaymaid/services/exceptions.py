@@ -11,3 +11,7 @@ class WebhookEndpointNotFoundError(Exception):
     Raised when a webhook endpoint is not found in the database or is not accessible to
     the user.
     """
+
+
+class WebhookEndpointUnavailableError(Exception):
+    """Raised when an ingestion endpoint is unknown or disabled."""
