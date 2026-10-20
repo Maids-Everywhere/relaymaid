@@ -1,14 +1,16 @@
+import asyncio
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import select, text
+from sqlalchemy import delete, select, text
 from sqlalchemy.exc import DBAPIError
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from relaymaid.db.models import Event, Organization, OutboxMessage, WebhookEndpoint
 from relaymaid.db.tenant_context import set_tenant_context
 from relaymaid.domain import EventStatus
 from relaymaid.services.webhook_ingestion import (
+    PersistedWebhookEvent,
     VerifiedWebhookEndpoint,
     persist_webhook_event,
 )
@@ -187,3 +189,87 @@ async def test_external_event_id_is_scoped_to_endpoint_and_tenant(
             )
             == result.outbox_message.id
         )
+
+
+async def test_concurrent_duplicates_create_one_event_and_one_outbox(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    organization_id = uuid4()
+    try:
+        # Commit setup so both independent transactions can see the endpoint.
+        async with session_factory.begin() as setup_session:
+            organization = Organization(id=organization_id, name="Concurrent ingestion")
+            setup_session.add(organization)
+            await setup_session.flush()
+            webhook_endpoint = WebhookEndpoint(
+                organization_id=organization_id,
+                name="Concurrent endpoint",
+                destination_url="https://example.com/events",
+                secret_ciphertext="encrypted",
+            )
+            setup_session.add(webhook_endpoint)
+            await setup_session.flush()
+            endpoint = VerifiedWebhookEndpoint(
+                id=webhook_endpoint.id, organization_id=organization_id
+            )
+
+        barrier = asyncio.Barrier(2)
+
+        async def persist_in_separate_transaction() -> PersistedWebhookEvent:
+            async with session_factory.begin() as session:
+                await barrier.wait()
+                return await persist_webhook_event(
+                    session=session,
+                    endpoint=endpoint,
+                    external_event_id="concurrent-123",
+                    event_type="order.created",
+                    payload_raw=PAYLOAD,
+                    content_type="application/json",
+                )
+
+        # Wait for both transactions even if one fails, before starting cleanup.
+        async with asyncio.timeout(15):
+            results = await asyncio.gather(
+                persist_in_separate_transaction(),
+                persist_in_separate_transaction(),
+                return_exceptions=True,
+            )
+        for result in results:
+            if isinstance(result, BaseException):
+                raise result
+        first, second = results
+        assert {first.created, second.created} == {True, False}
+        assert first.event.id == second.event.id
+        created_result = first if first.created else second
+        duplicate_result = second if first.created else first
+        assert created_result.outbox_message is not None
+        assert duplicate_result.outbox_message is None
+
+        async with session_factory.begin() as assertion_session:
+            events = list(
+                await assertion_session.scalars(
+                    select(Event).where(Event.organization_id == organization_id)
+                )
+            )
+            messages = list(
+                await assertion_session.scalars(
+                    select(OutboxMessage).where(
+                        OutboxMessage.organization_id == organization_id
+                    )
+                )
+            )
+            assert len(events) == 1
+            assert len(messages) == 1
+            assert events[0].id == first.event.id
+            assert messages[0].id == created_result.outbox_message.id
+            assert messages[0].event_id == events[0].id
+    finally:
+        # These rows are committed, so the normal rollback fixture cannot remove them.
+        async with session_factory.begin() as cleanup_session:
+            for model in (OutboxMessage, Event, WebhookEndpoint):
+                await cleanup_session.execute(
+                    delete(model).where(model.organization_id == organization_id)
+                )
+            await cleanup_session.execute(
+                delete(Organization).where(Organization.id == organization_id)
+            )
