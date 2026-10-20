@@ -201,4 +201,3 @@ async def delete_webhook_endpoint_by_id(
 
     if deleted_id is None:
         raise WebhookEndpointNotFoundError
-    await session.flush()

@@ -232,7 +232,7 @@ async def test_update_propagates_failures_without_committing(stage: str) -> None
     session.rollback.assert_not_awaited()
 
 
-async def test_delete_flushes_removal_and_leaves_commit_to_caller() -> None:
+async def test_delete_leaves_flush_and_commit_to_caller() -> None:
     session = MagicMock(spec=AsyncSession)
     endpoint_id = uuid4()
     session.scalar.return_value = endpoint_id
@@ -243,12 +243,12 @@ async def test_delete_flushes_removal_and_leaves_commit_to_caller() -> None:
     session.scalar.assert_awaited_once()
     session.execute.assert_not_awaited()
     session.delete.assert_not_awaited()
-    session.flush.assert_awaited_once_with()
+    session.flush.assert_not_awaited()
     session.commit.assert_not_awaited()
     session.rollback.assert_not_awaited()
 
 
-@pytest.mark.parametrize("stage", ["missing", "scalar", "flush"])
+@pytest.mark.parametrize("stage", ["missing", "scalar"])
 async def test_delete_propagates_failures_without_committing(stage: str) -> None:
     session = MagicMock(spec=AsyncSession)
     session.scalar.return_value = None if stage == "missing" else uuid4()
@@ -266,7 +266,6 @@ async def test_delete_propagates_failures_without_committing(stage: str) -> None
         assert error.value.args == ()
     session.scalar.assert_awaited_once()
     session.delete.assert_not_awaited()
-    if stage != "flush":
-        session.flush.assert_not_awaited()
+    session.flush.assert_not_awaited()
     session.commit.assert_not_awaited()
     session.rollback.assert_not_awaited()
