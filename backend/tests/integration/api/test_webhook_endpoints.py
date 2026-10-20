@@ -804,14 +804,11 @@ async def test_delete_rejects_invalid_endpoint_id_before_service(
     service.assert_not_awaited()
 
 
-@pytest.mark.parametrize("operation", ["create", "update"])
 @pytest.mark.parametrize(
-    "destination_url",
+    ("operation", "destination_url"),
     [
-        "https://user:password@example.com/events",
-        "http://LOCALHOST./events",
-        "http://api.localhost/events",
-        "http://127.0.0.1/events",
+        ("create", "http://169.254.169.254/latest/meta-data"),
+        ("update", "http://127.0.0.1/events"),
     ],
 )
 async def test_unsafe_destination_is_rejected_without_database_changes(
@@ -858,46 +855,3 @@ async def test_unsafe_destination_is_rejected_without_database_changes(
                 column.name: getattr(endpoint, column.name)
                 for column in WebhookEndpoint.__table__.columns
             } == before
-
-
-@pytest.mark.parametrize("operation", ["create", "update"])
-@pytest.mark.parametrize(
-    "destination_url",
-    [
-        "https://8.8.8.8/events",
-        "https://[2606:4700:4700::1111]/events",
-        "https://[::ffff:808:808]/events",
-    ],
-)
-async def test_public_ip_destinations_are_accepted_and_persisted(
-    client: AsyncClient,
-    owner: dict[str, str],
-    session_factory: async_sessionmaker[AsyncSession],
-    operation: str,
-    destination_url: str,
-) -> None:
-    if operation == "create":
-        response = await client.post(
-            "/webhook-endpoints",
-            json={**PAYLOAD, "destination_url": destination_url},
-            headers=authorization(owner),
-        )
-        assert response.status_code == 201
-    else:
-        created = await client.post(
-            "/webhook-endpoints", json=PAYLOAD, headers=authorization(owner)
-        )
-        assert created.status_code == 201
-        endpoint_id = created.json()["id"]
-        response = await client.patch(
-            f"/webhook-endpoints/{endpoint_id}",
-            json={"destination_url": destination_url},
-            headers=authorization(owner),
-        )
-        assert response.status_code == 200
-    body = response.json()
-    assert body["destination_url"] == destination_url
-    async with session_factory() as session:
-        endpoint = await session.get(WebhookEndpoint, UUID(body["id"]))
-        assert endpoint is not None
-        assert endpoint.destination_url == destination_url

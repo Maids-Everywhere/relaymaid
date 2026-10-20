@@ -1,6 +1,6 @@
 # RelayMaid threat model
 
-Status: Implemented
+Status: Living document — partially implemented
 
 ## Assets
 
@@ -42,7 +42,7 @@ Status: Implemented
 
 Tenants control WebhookEndpoint.destination_url, while RelayMaid workers will make server-side HTTP requests to that address. The destination must therefore be treated as hostile input.
 
-## Configuration-time validation
+### Configuration-time validation
 
 When an endpoint is created or updated, RelayMaid currently:
 * accepts only syntactically valid HTTP or HTTPS URLs;
@@ -55,7 +55,7 @@ When an endpoint is created or updated, RelayMaid currently:
 
 This validation prevents obvious attempts to target local services or cloud metadata endpoints. It is not a complete SSRF boundary because a public-looking hostname can later resolve to a prohibited address.
 
-## Delivery-time validation
+### Delivery-time validation
 
 Before every outbound delivery attempt, including retries, the worker must:
 * resolve the destination hostname;
@@ -68,13 +68,13 @@ Before every outbound delivery attempt, including retries, the worker must:
 
 These controls are part of the delivery implementation tracked by #13. Repeating the validation for every attempt is necessary because DNS results can change between retries.
 
-## Infrastructure boundary
+### Infrastructure boundary
 
 Application validation is not equivalent to network isolation. A production deployment should additionally restrict worker egress through firewall rules, security groups, or an outbound proxy. Access to loopback, private networks, link-local ranges, cloud metadata services, and other internal infrastructure should be denied independently of application code.
 
 RelayMaid does not currently provide a production guarantee against DNS rebinding until delivery-time validation and network egress controls are in place.
 
-## Local development
+### Local development
 
 Private and local destination URLs remain rejected through the public endpoint-management API. Integration tests should inject a controlled HTTP transport or create test records directly instead of weakening the production validation policy. Any future development-only bypass must be explicit and must be rejected when the application runs in production mode.
 
