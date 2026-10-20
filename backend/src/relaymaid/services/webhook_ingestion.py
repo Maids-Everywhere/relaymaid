@@ -4,6 +4,8 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from relaymaid.db.models import Event, OutboxMessage
+from relaymaid.db.tenant_context import set_tenant_context
 from relaymaid.security.webhook_secrets import WebhookSecretManager
 from relaymaid.security.webhook_signatures import verify_webhook_signature
 from relaymaid.services.exceptions import WebhookEndpointUnavailableError
@@ -20,6 +22,12 @@ class ResolvedWebhookEndpoint:
 class VerifiedWebhookEndpoint:
     id: UUID
     organization_id: UUID
+
+
+@dataclass(frozen=True, slots=True)
+class PersistedWebhookEvent:
+    event: Event
+    outbox_message: OutboxMessage
 
 
 async def resolve_webhook_endpoint(
@@ -77,4 +85,42 @@ async def authenticate_incoming_webhook(
     return VerifiedWebhookEndpoint(
         id=endpoint.id,
         organization_id=endpoint.organization_id,
+    )
+
+
+async def persist_webhook_event(
+    *,
+    session: AsyncSession,
+    endpoint: VerifiedWebhookEndpoint,
+    external_event_id: str,
+    event_type: str,
+    payload_raw: bytes,
+    content_type: str,
+) -> PersistedWebhookEvent:
+    await set_tenant_context(
+        session,
+        endpoint.organization_id,
+    )
+
+    event = Event(
+        organization_id=endpoint.organization_id,
+        endpoint_id=endpoint.id,
+        external_event_id=external_event_id,
+        event_type=event_type,
+        payload_raw=payload_raw,
+        content_type=content_type,
+    )
+    session.add(event)
+    await session.flush()
+
+    outbox_message = OutboxMessage(
+        organization_id=endpoint.organization_id,
+        event_id=event.id,
+    )
+    session.add(outbox_message)
+    await session.flush()
+
+    return PersistedWebhookEvent(
+        event=event,
+        outbox_message=outbox_message,
     )
