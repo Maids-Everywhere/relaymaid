@@ -172,3 +172,29 @@ async def update_webhook_endpoint_by_id(
     await session.flush()
 
     return endpoint
+
+
+async def delete_webhook_endpoint_by_id(
+    session: AsyncSession,
+    *,
+    organization_id: UUID,
+    endpoint_id: UUID,
+) -> None:
+    """
+    Deletes a webhook endpoint by its ID for the specified organization.
+
+    :param session: The database session to use for the operation.
+    :param organization_id: The ID of the organization to which the webhook endpoint
+      belongs.
+    :param endpoint_id: The ID of the webhook endpoint to delete.
+    :raises WebhookEndpointNotFoundError: If the endpoint is unavailable to the
+      organization.
+    """
+    endpoint = await get_webhook_endpoint_by_id(
+        session=session,
+        organization_id=organization_id,
+        endpoint_id=endpoint_id,
+    )
+
+    await session.delete(endpoint)
+    await session.flush()

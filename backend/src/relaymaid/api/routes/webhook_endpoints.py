@@ -16,6 +16,7 @@ from relaymaid.api.schemas import (
 from relaymaid.services.exceptions import WebhookEndpointNotFoundError
 from relaymaid.services.webhook_endpoints import (
     create_webhook_endpoint,
+    delete_webhook_endpoint_by_id,
     get_webhook_endpoint_by_id,
     list_webhook_endpoints,
     update_webhook_endpoint_by_id,
@@ -145,3 +146,25 @@ async def update_webhook_endpoint(
         ) from e
 
     return WebhookEndpointResponse.model_validate(updated_endpoint)
+
+
+@router.delete(
+    "/{endpoint_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_webhook_endpoint(
+    endpoint_id: UUID,
+    session: DatabaseSession,
+    principal: OwnerPrincipal,
+) -> None:
+    try:
+        await delete_webhook_endpoint_by_id(
+            session=session,
+            organization_id=principal.organization_id,
+            endpoint_id=endpoint_id,
+        )
+    except WebhookEndpointNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Webhook endpoint not found.",
+        ) from e

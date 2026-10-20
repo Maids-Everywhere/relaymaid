@@ -130,17 +130,18 @@ async def test_select_and_update_only_current_tenant(
 
 
 @pytest.mark.parametrize("lookup", ["id", "public_id"])
-@pytest.mark.parametrize("operation", ["select", "update"])
+@pytest.mark.parametrize("operation", ["select", "update", "delete"])
 async def test_foreign_endpoint_identifiers_do_not_bypass_rls(
     db_session: AsyncSession, webhooks: WebhookData, lookup: str, operation: str
 ) -> None:
     await set_tenant_context(db_session, webhooks.organizations[0])
     target = webhooks.endpoints[1] if lookup == "id" else webhooks.public_ids[1]
-    statement = (
-        select(TABLE.c.id)
-        if operation == "select"
-        else update(TABLE).values(name="Blocked").returning(TABLE.c.id)
-    )
+    statements = {
+        "select": select(TABLE.c.id),
+        "update": update(TABLE).values(name="Blocked").returning(TABLE.c.id),
+        "delete": delete(TABLE).returning(TABLE.c.id),
+    }
+    statement = statements[operation]
     assert (
         list(await db_session.scalars(statement.where(TABLE.c[lookup] == target))) == []
     )
@@ -217,10 +218,8 @@ async def test_update_cannot_move_endpoint_to_another_organization(
         )
 
 
-@pytest.mark.parametrize(
-    "context", ["matching", "other", "missing", "empty", "unknown", "malformed"]
-)
-async def test_delete_is_denied_for_every_tenant_context(
+@pytest.mark.parametrize("context", ["missing", "empty", "unknown", "user_only"])
+async def test_delete_without_tenant_context_preserves_all_endpoints(
     db_session: AsyncSession, webhooks: WebhookData, context: str
 ) -> None:
     await set_context(db_session, webhooks, context)
@@ -232,7 +231,7 @@ async def test_delete_is_denied_for_every_tenant_context(
         assert list(await db_session.scalars(select(TABLE.c.id))) == [endpoint_id]
 
 
-@pytest.mark.parametrize("operation", ["select", "insert", "update"])
+@pytest.mark.parametrize("operation", ["select", "insert", "update", "delete"])
 async def test_malformed_tenant_context_fails_closed(
     db_session: AsyncSession, webhooks: WebhookData, operation: str
 ) -> None:
@@ -241,6 +240,7 @@ async def test_malformed_tenant_context_fails_closed(
         "select": select(TABLE),
         "insert": insert(TABLE).values(**endpoint_values(webhooks.organizations[0])),
         "update": update(TABLE).values(name="Blocked"),
+        "delete": delete(TABLE),
     }
     with pytest.raises(DBAPIError, match="invalid input syntax for type uuid") as error:
         async with db_session.begin_nested():
@@ -254,3 +254,45 @@ async def test_malformed_tenant_context_fails_closed(
             endpoint_id,
             "Original",
         )
+
+
+async def test_delete_only_removes_current_tenant_endpoints(
+    db_session: AsyncSession, webhooks: WebhookData
+) -> None:
+    # No application filter: PostgreSQL must restrict the DELETE itself.
+    await set_tenant_context(db_session, webhooks.organizations[0])
+    assert list(await db_session.scalars(delete(TABLE).returning(TABLE.c.id))) == [
+        webhooks.endpoints[0]
+    ]
+    assert list(await db_session.scalars(select(TABLE.c.id))) == []
+
+    await set_tenant_context(db_session, webhooks.organizations[1])
+    assert list(await db_session.scalars(select(TABLE.c.id))) == [webhooks.endpoints[1]]
+    assert list(await db_session.scalars(delete(TABLE).returning(TABLE.c.id))) == [
+        webhooks.endpoints[1]
+    ]
+    assert list(await db_session.scalars(select(TABLE.c.id))) == []
+
+    await set_tenant_context(db_session, webhooks.organizations[0])
+    assert list(await db_session.scalars(select(TABLE.c.id))) == []
+
+
+@pytest.mark.parametrize("lookup", ["id", "public_id"])
+async def test_delete_current_tenant_endpoint_by_identifier_can_be_rolled_back(
+    db_session: AsyncSession, webhooks: WebhookData, lookup: str
+) -> None:
+    await set_tenant_context(db_session, webhooks.organizations[0])
+    target = webhooks.endpoints[0] if lookup == "id" else webhooks.public_ids[0]
+    savepoint = await db_session.begin_nested()
+    assert list(
+        await db_session.scalars(
+            delete(TABLE).where(TABLE.c[lookup] == target).returning(TABLE.c.id)
+        )
+    ) == [webhooks.endpoints[0]]
+    assert list(await db_session.scalars(select(TABLE.c.id))) == []
+    await savepoint.rollback()
+    for organization_id, endpoint_id in zip(
+        webhooks.organizations, webhooks.endpoints, strict=True
+    ):
+        await set_tenant_context(db_session, organization_id)
+        assert list(await db_session.scalars(select(TABLE.c.id))) == [endpoint_id]

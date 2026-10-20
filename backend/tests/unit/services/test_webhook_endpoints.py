@@ -9,6 +9,7 @@ from relaymaid.security.webhook_secrets import WebhookSecretManager
 from relaymaid.services.exceptions import WebhookEndpointNotFoundError
 from relaymaid.services.webhook_endpoints import (
     create_webhook_endpoint,
+    delete_webhook_endpoint_by_id,
     get_webhook_endpoint_by_id,
     list_webhook_endpoints,
     update_webhook_endpoint_by_id,
@@ -225,6 +226,48 @@ async def test_update_propagates_failures_without_committing(stage: str) -> None
         )
     if stage != "missing":
         assert error.value is failure
+    if stage != "flush":
+        session.flush.assert_not_awaited()
+    session.commit.assert_not_awaited()
+    session.rollback.assert_not_awaited()
+
+
+async def test_delete_flushes_removal_and_leaves_commit_to_caller() -> None:
+    session = MagicMock(spec=AsyncSession)
+    endpoint = WebhookEndpoint(id=uuid4(), organization_id=uuid4())
+    query_result = MagicMock()
+    query_result.scalar_one_or_none.return_value = endpoint
+    session.execute.return_value = query_result
+    result = await delete_webhook_endpoint_by_id(
+        session, organization_id=endpoint.organization_id, endpoint_id=endpoint.id
+    )
+    assert result is None
+    session.delete.assert_awaited_once_with(endpoint)
+    session.flush.assert_awaited_once_with()
+    session.commit.assert_not_awaited()
+    session.rollback.assert_not_awaited()
+
+
+@pytest.mark.parametrize("stage", ["missing", "execute", "delete", "flush"])
+async def test_delete_propagates_failures_without_committing(stage: str) -> None:
+    session = MagicMock(spec=AsyncSession)
+    query_result = MagicMock()
+    query_result.scalar_one_or_none.return_value = (
+        None if stage == "missing" else MagicMock(spec=WebhookEndpoint)
+    )
+    session.execute.return_value = query_result
+    failure = RuntimeError("database unavailable")
+    if stage != "missing":
+        getattr(session, stage).side_effect = failure
+    expected = WebhookEndpointNotFoundError if stage == "missing" else RuntimeError
+    with pytest.raises(expected) as error:
+        await delete_webhook_endpoint_by_id(
+            session, organization_id=uuid4(), endpoint_id=uuid4()
+        )
+    if stage != "missing":
+        assert error.value is failure
+    if stage in {"missing", "execute"}:
+        session.delete.assert_not_awaited()
     if stage != "flush":
         session.flush.assert_not_awaited()
     session.commit.assert_not_awaited()
