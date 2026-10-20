@@ -32,6 +32,11 @@ class Event(Base):
         ),
         UniqueConstraint(
             "organization_id",
+            "id",
+            name="uq_events_organization_id_id",
+        ),
+        UniqueConstraint(
+            "organization_id",
             "endpoint_id",
             "external_event_id",
             name="uq_events_organization_endpoint_external_event",
