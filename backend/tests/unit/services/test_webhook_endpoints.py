@@ -9,6 +9,7 @@ from relaymaid.security.webhook_secrets import WebhookSecretManager
 from relaymaid.services.exceptions import WebhookEndpointNotFoundError
 from relaymaid.services.webhook_endpoints import (
     create_webhook_endpoint,
+    delete_webhook_endpoint_by_id,
     get_webhook_endpoint_by_id,
     list_webhook_endpoints,
     update_webhook_endpoint_by_id,
@@ -227,5 +228,44 @@ async def test_update_propagates_failures_without_committing(stage: str) -> None
         assert error.value is failure
     if stage != "flush":
         session.flush.assert_not_awaited()
+    session.commit.assert_not_awaited()
+    session.rollback.assert_not_awaited()
+
+
+async def test_delete_leaves_flush_and_commit_to_caller() -> None:
+    session = MagicMock(spec=AsyncSession)
+    endpoint_id = uuid4()
+    session.scalar.return_value = endpoint_id
+    result = await delete_webhook_endpoint_by_id(
+        session, organization_id=uuid4(), endpoint_id=endpoint_id
+    )
+    assert result is None
+    session.scalar.assert_awaited_once()
+    session.execute.assert_not_awaited()
+    session.delete.assert_not_awaited()
+    session.flush.assert_not_awaited()
+    session.commit.assert_not_awaited()
+    session.rollback.assert_not_awaited()
+
+
+@pytest.mark.parametrize("stage", ["missing", "scalar"])
+async def test_delete_propagates_failures_without_committing(stage: str) -> None:
+    session = MagicMock(spec=AsyncSession)
+    session.scalar.return_value = None if stage == "missing" else uuid4()
+    failure = RuntimeError("database unavailable")
+    if stage != "missing":
+        getattr(session, stage).side_effect = failure
+    expected = WebhookEndpointNotFoundError if stage == "missing" else RuntimeError
+    with pytest.raises(expected) as error:
+        await delete_webhook_endpoint_by_id(
+            session, organization_id=uuid4(), endpoint_id=uuid4()
+        )
+    if stage != "missing":
+        assert error.value is failure
+    else:
+        assert error.value.args == ()
+    session.scalar.assert_awaited_once()
+    session.delete.assert_not_awaited()
+    session.flush.assert_not_awaited()
     session.commit.assert_not_awaited()
     session.rollback.assert_not_awaited()

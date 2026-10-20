@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from relaymaid.db.models.webhook import WebhookEndpoint
@@ -172,3 +172,32 @@ async def update_webhook_endpoint_by_id(
     await session.flush()
 
     return endpoint
+
+
+async def delete_webhook_endpoint_by_id(
+    session: AsyncSession,
+    *,
+    organization_id: UUID,
+    endpoint_id: UUID,
+) -> None:
+    """
+    Deletes a webhook endpoint by its ID for the specified organization.
+
+    :param session: The database session to use for the operation.
+    :param organization_id: The ID of the organization to which the webhook endpoint
+      belongs.
+    :param endpoint_id: The ID of the webhook endpoint to delete.
+    :raises WebhookEndpointNotFoundError: If the endpoint is unavailable to the
+      organization.
+    """
+    deleted_id = await session.scalar(
+        delete(WebhookEndpoint)
+        .where(
+            WebhookEndpoint.organization_id == organization_id,
+            WebhookEndpoint.id == endpoint_id,
+        )
+        .returning(WebhookEndpoint.id)
+    )
+
+    if deleted_id is None:
+        raise WebhookEndpointNotFoundError

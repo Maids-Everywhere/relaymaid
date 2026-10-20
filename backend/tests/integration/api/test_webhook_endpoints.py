@@ -681,3 +681,124 @@ async def test_patch_rejects_invalid_endpoint_id_before_update(
     assert response.status_code == 422
     assert response.json()["detail"][0]["loc"] == ["path", "endpoint_id"]
     service.assert_not_awaited()
+
+
+async def test_delete_persists_removal_and_returns_empty_204(
+    client: AsyncClient,
+    owner: dict[str, str],
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    endpoints = []
+    for _ in range(2):
+        response = await client.post(
+            "/webhook-endpoints", json=PAYLOAD, headers=authorization(owner)
+        )
+        assert response.status_code == 201
+        endpoints.append(response.json())
+    endpoint_id = endpoints[0]["id"]
+    response = await client.delete(
+        f"/webhook-endpoints/{endpoint_id}", headers=authorization(owner)
+    )
+    assert response.status_code == 204
+    assert response.content == b""
+    async with session_factory() as session:
+        assert await session.get(WebhookEndpoint, UUID(endpoint_id)) is None
+        assert await session.get(WebhookEndpoint, UUID(endpoints[1]["id"])) is not None
+    response = await client.get(
+        f"/webhook-endpoints/{endpoint_id}", headers=authorization(owner)
+    )
+    assert response.status_code == 404
+    response = await client.delete(
+        f"/webhook-endpoints/{endpoint_id}", headers=authorization(owner)
+    )
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Webhook endpoint not found."}
+
+
+@pytest.mark.parametrize("token", [None, "invalid-token"])
+async def test_delete_requires_authentication(
+    client: AsyncClient, token: str | None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from unittest.mock import AsyncMock
+
+    service = AsyncMock()
+    monkeypatch.setattr(route_module, "delete_webhook_endpoint_by_id", service)
+    headers = {} if token is None else {"Authorization": f"Bearer {token}"}
+    response = await client.delete(f"/webhook-endpoints/{uuid4()}", headers=headers)
+    assert response.status_code == 401
+    assert response.headers["www-authenticate"] == "Bearer"
+    service.assert_not_awaited()
+
+
+async def test_viewer_cannot_delete_with_existing_owner_token(
+    client: AsyncClient,
+    owner: dict[str, str],
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    response = await client.post(
+        "/webhook-endpoints", json=PAYLOAD, headers=authorization(owner)
+    )
+    assert response.status_code == 201
+    endpoint_id = UUID(response.json()["id"])
+    async with session_factory.begin() as session:
+        await session.execute(
+            update(Membership)
+            .where(Membership.id == UUID(owner["membership_id"]))
+            .values(role=MembershipRole.VIEWER)
+        )
+    response = await client.delete(
+        f"/webhook-endpoints/{endpoint_id}", headers=authorization(owner)
+    )
+    assert response.status_code == 403
+    async with session_factory() as session:
+        assert await session.get(WebhookEndpoint, endpoint_id) is not None
+
+
+@pytest.mark.parametrize("lookup", ["missing", "public_id", "foreign_tenant"])
+async def test_delete_returns_404_and_preserves_unavailable_endpoint(
+    client: AsyncClient,
+    owner: dict[str, str],
+    session_factory: async_sessionmaker[AsyncSession],
+    lookup: str,
+) -> None:
+    endpoint_id = str(uuid4())
+    created = None
+    if lookup != "missing":
+        principal = (
+            owner
+            if lookup == "public_id"
+            else await register_owner(client, "delete-other-owner@example.com")
+        )
+        response = await client.post(
+            "/webhook-endpoints", json=PAYLOAD, headers=authorization(principal)
+        )
+        assert response.status_code == 201
+        created = response.json()
+        endpoint_id = created["public_id" if lookup == "public_id" else "id"]
+    response = await client.delete(
+        f"/webhook-endpoints/{endpoint_id}", headers=authorization(owner)
+    )
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Webhook endpoint not found."}
+    if created:
+        async with session_factory() as session:
+            assert await session.get(WebhookEndpoint, UUID(created["id"])) is not None
+
+
+@pytest.mark.parametrize("endpoint_id", ["not-a-uuid", "123", "null"])
+async def test_delete_rejects_invalid_endpoint_id_before_service(
+    client: AsyncClient,
+    owner: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    endpoint_id: str,
+) -> None:
+    from unittest.mock import AsyncMock
+
+    service = AsyncMock()
+    monkeypatch.setattr(route_module, "delete_webhook_endpoint_by_id", service)
+    response = await client.delete(
+        f"/webhook-endpoints/{endpoint_id}", headers=authorization(owner)
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"][0]["loc"] == ["path", "endpoint_id"]
+    service.assert_not_awaited()
