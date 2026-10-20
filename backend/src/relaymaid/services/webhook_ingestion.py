@@ -1,7 +1,8 @@
 from dataclasses import dataclass
 from uuid import UUID
 
-from sqlalchemy import text
+from sqlalchemy import select, text
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from relaymaid.db.models import Event, OutboxMessage
@@ -27,7 +28,8 @@ class VerifiedWebhookEndpoint:
 @dataclass(frozen=True, slots=True)
 class PersistedWebhookEvent:
     event: Event
-    outbox_message: OutboxMessage
+    outbox_message: OutboxMessage | None
+    created: bool
 
 
 async def resolve_webhook_endpoint(
@@ -102,16 +104,39 @@ async def persist_webhook_event(
         endpoint.organization_id,
     )
 
-    event = Event(
-        organization_id=endpoint.organization_id,
-        endpoint_id=endpoint.id,
-        external_event_id=external_event_id,
-        event_type=event_type,
-        payload_raw=payload_raw,
-        content_type=content_type,
+    event = await session.scalar(
+        insert(Event)
+        .values(
+            organization_id=endpoint.organization_id,
+            endpoint_id=endpoint.id,
+            external_event_id=external_event_id,
+            event_type=event_type,
+            payload_raw=payload_raw,
+            content_type=content_type,
+        )
+        .on_conflict_do_nothing(
+            constraint="uq_events_organization_endpoint_external_event",
+        )
+        .returning(Event)
     )
-    session.add(event)
-    await session.flush()
+
+    if event is None:
+        existing_event = await session.scalar(
+            select(Event).where(
+                Event.organization_id == endpoint.organization_id,
+                Event.endpoint_id == endpoint.id,
+                Event.external_event_id == external_event_id,
+            )
+        )
+
+        if existing_event is None:
+            raise RuntimeError("Conflicting webhook event could not be loaded")
+
+        return PersistedWebhookEvent(
+            event=existing_event,
+            outbox_message=None,
+            created=False,
+        )
 
     outbox_message = OutboxMessage(
         organization_id=endpoint.organization_id,
@@ -121,6 +146,5 @@ async def persist_webhook_event(
     await session.flush()
 
     return PersistedWebhookEvent(
-        event=event,
-        outbox_message=outbox_message,
+        event=event, outbox_message=outbox_message, created=True
     )
