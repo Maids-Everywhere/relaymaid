@@ -19,7 +19,9 @@ from relaymaid.security.webhook_signatures import (
 )
 from relaymaid.services.exceptions import WebhookEndpointUnavailableError
 from relaymaid.services.webhook_ingestion import (
+    VerifiedWebhookEndpoint,
     authenticate_incoming_webhook,
+    persist_webhook_event,
     resolve_webhook_endpoint,
 )
 
@@ -113,3 +115,25 @@ async def test_authentication_checks_availability_decryption_and_signature(
             assert error.value is failure
     session.flush.assert_not_awaited()
     session.commit.assert_not_awaited()
+
+
+async def test_persist_raises_when_conflicting_event_cannot_be_loaded() -> None:
+    session = MagicMock(spec=AsyncSession)
+    session.scalar.side_effect = [None, None]
+    endpoint = VerifiedWebhookEndpoint(id=uuid4(), organization_id=uuid4())
+    with pytest.raises(
+        RuntimeError, match="Conflicting webhook event could not be loaded"
+    ):
+        await persist_webhook_event(
+            session=session,
+            endpoint=endpoint,
+            external_event_id="external-123",
+            event_type="order.created",
+            payload_raw=b"{}",
+            content_type="application/json",
+        )
+    assert session.scalar.await_count == 2
+    session.add.assert_not_called()
+    session.flush.assert_not_awaited()
+    session.commit.assert_not_awaited()
+    session.rollback.assert_not_awaited()
